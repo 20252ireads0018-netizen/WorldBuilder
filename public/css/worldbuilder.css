@@ -712,5 +712,8 @@ body.atlas-on { overflow: hidden; }
 .wb .ctx-menu button.atual::after { content: ' ✓'; }
 .wb .label.island { font-style: italic; font-size: 16px; letter-spacing: .06em; }
 .wb .label.road { font-style: italic; font-size: 13px; opacity: .9; }
-.wb .tool { padding: 7px 2px; }
-.wb .tool svg { width: 23px; height: 23px; }
+.wb .tool { padding: 5px 2px; gap: 3px; font-size: 12.5px; }
+.wb .tool svg { width: 22px; height: 22px; }
+.wb .label.tower { font-size: 15px; letter-spacing: .04em; }
+.wb .label.ruins { font-style: italic; font-size: 15px; opacity: .92; }
+.wb .label.phenomenon { font-style: italic; font-size: 15px; letter-spacing: .05em; }

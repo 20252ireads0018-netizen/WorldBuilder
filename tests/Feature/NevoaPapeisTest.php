@@ -127,4 +127,17 @@ class NevoaPapeisTest extends TestCase
             ->assertOk()->assertJsonPath('shape.esticar', 6.5)->assertJsonPath('size', 20);
         $this->putJson("/api/features/{$f['id']}", ['shape' => ['esticar' => 12]])->assertStatus(422);
     }
+
+    public function test_torres_ruinas_e_fenomenos(): void
+    {
+        $id = $this->mundo->id;
+        foreach (['tower' => 'farol', 'ruins' => 'templo', 'phenomenon' => 'tempestade'] as $tipo => $skin) {
+            $f = $this->postJson("/api/worlds/$id/features", ['type' => $tipo, 'name' => '', 'x' => 10, 'z' => 10, 'size' => 4, 'skin' => $skin, 'shape' => ['altura' => 1.5, 'densidade' => 2]])
+                ->assertCreated()->assertJsonPath('skin', $skin)->json();
+            $this->putJson("/api/features/{$f['id']}", ['skin' => 'vulcao'])->assertStatus(422);
+        }
+        $this->postJson("/api/worlds/$id/features", ['type' => 'phenomenon', 'x' => 0, 'z' => 0, 'size' => 20, 'skin' => 'nevoa', 'color' => '#9a6fd0'])->assertCreated();
+        $this->putJson("/api/worlds/$id", ['theme' => ['fundo' => 'pergaminho', 'estilo' => 'pergaminho', 'skins' => ['phenomenon' => 'chuva', 'tower' => 'mago']]])
+            ->assertOk();
+    }
 }

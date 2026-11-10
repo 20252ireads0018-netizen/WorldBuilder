@@ -462,6 +462,149 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         });
     }
 
+    // Ruínas
+    const rgba = (h, a) => `rgba(${hex(h).join(',')},${a})`;
+    for (const f of lugares.filter((l) => l.type === 'ruins')) {
+        const F = C.forma(f), r = rng(f.id * 19 + 7), skin = C.skinOf(f);
+        const pedra = P.cor ? C.corOf(f) : (opt.estilo === 'noturno' ? '#55607a' : escurecer(P.terra, 0.22));
+        const k = clamp(f.size * u / 9, 3, 14);
+        const naBorda = (d, a) => { const b = f.size * d * C.borda(F, a), [x, z] = C.paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F); return [X(x), Y(z), x, z]; };
+        ctx.save(); ctx.strokeStyle = P.tinta; ctx.lineWidth = 1.1; ctx.fillStyle = pedra; ctx.lineJoin = 'round';
+        if (skin === 'pedras' || skin === 'templo') {
+            const m = Math.max(6, Math.round(f.size * 1.3)), alto = skin === 'templo' ? 1.2 : 0.8;
+            if (skin === 'templo') {
+                ctx.beginPath();
+                for (let i = 0; i <= 48; i++) { const [x, y] = naBorda(0.75, (i / 48) * PI2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+                ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+            }
+            const cols = [];
+            for (let i = 0; i < m; i++) { const [x, y, wx, wz] = naBorda(skin === 'pedras' ? 0.7 : 0.62, (i / m) * PI2); if (!naAgua(wx, wz)) cols.push([x, y]); }
+            cols.sort((a, b) => a[1] - b[1]).forEach(([x, y]) => {
+                const h = k * alto * (skin === 'templo' ? 0.5 + r() * 0.6 : 1);
+                ctx.beginPath(); ctx.rect(x - k * 0.22, y - h, k * 0.44, h); ctx.fill(); ctx.stroke();
+            });
+        } else if (skin === 'castelo') {
+            const m = 36;
+            for (let i = 0; i < m; i++) {
+                if (r() < 0.3) continue;
+                const [x0, y0] = naBorda(0.85, (i / m) * PI2), [x1, y1] = naBorda(0.85, ((i + 1) / m) * PI2);
+                ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+                ctx.lineWidth = Math.max(2.5, k * 0.45); ctx.strokeStyle = P.tinta; ctx.stroke();
+                ctx.lineWidth = Math.max(1.2, k * 0.3); ctx.strokeStyle = pedra; ctx.stroke();
+            }
+            // torre de menagem quebrada
+            const x = X(f.x), y = Y(f.z), w = k * 1.3, h = k * 1.6;
+            ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w / 2, y - h); ctx.lineTo(x - w / 4, y - h * 0.8); ctx.lineTo(x, y - h * 1.05); ctx.lineTo(x + w / 5, y - h * 0.7); ctx.lineTo(x + w / 2, y - h * 0.85); ctx.lineTo(x + w / 2, y); ctx.closePath();
+            ctx.lineWidth = 1.2; ctx.strokeStyle = P.tinta; ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.rect(x - w * 0.1, y - h * 0.45, w * 0.2, h * 0.3); ctx.fillStyle = P.tinta; ctx.fill();
+        } else {
+            const n = clamp(Math.round(f.size * u / 3), 5, 34), blocos = [];
+            for (let i = 0; i < n; i++) { const [wx, wz] = C.pontoDentro(f, r, F, 0, 0.85); if (!naAgua(wx, wz)) blocos.push([X(wx), Y(wz)]); }
+            blocos.sort((a, b) => a[1] - b[1]).forEach(([x, y]) => {
+                const w = k * (0.5 + r() * 0.7), h = k * (0.25 + r() * 0.5);
+                ctx.beginPath(); ctx.moveTo(x - w / 2, y); ctx.lineTo(x - w / 2, y - h); ctx.lineTo(x - w / 6, y - h * (0.6 + r() * 0.4)); ctx.lineTo(x + w / 2, y - h * 0.7); ctx.lineTo(x + w / 2, y); ctx.closePath();
+                ctx.fill(); ctx.stroke();
+                if (skin === 'arcana' && r() < 0.5) estrela(ctx, x + (r() - 0.5) * k, y - h - k * 0.6, k * 0.35, P.cor ? C.corOf(f) : P.tinta);
+            });
+        }
+        ctx.restore();
+    }
+
+    // Torres
+    for (const f of lugares.filter((l) => l.type === 'tower').sort((a, b) => a.z - b.z)) {
+        const x = X(f.x), y = Y(f.z), skin = C.skinOf(f);
+        const h = clamp(f.size * u * 1.6 * (f.shape?.altura ?? 1), 18, 52), w = h * 0.3;
+        const corpo = skin === 'sombria' ? '#3a3440' : skin === 'elfica' ? '#f2ecdc' : P.cor ? '#d8ccb0' : (opt.estilo === 'noturno' ? '#2a3654' : clarear(P.terra, 0.3));
+        const topo = P.cor ? C.corOf(f) : (opt.estilo === 'noturno' ? '#c9a964' : escurecer(P.terra, 0.4));
+        ctx.save(); ctx.lineWidth = 1.2; ctx.strokeStyle = P.tinta; ctx.lineJoin = 'round';
+        ctx.fillStyle = 'rgba(0,0,0,.16)'; ctx.beginPath(); ctx.ellipse(x + w * 0.3, y, w * 0.9, w * 0.32, 0, 0, PI2); ctx.fill();
+        const fino = skin === 'elfica' ? 0.75 : 1;
+        ctx.beginPath(); ctx.moveTo(x - w / 2 * fino, y); ctx.lineTo(x - w * 0.4 * fino, y - h); ctx.lineTo(x + w * 0.4 * fino, y - h); ctx.lineTo(x + w / 2 * fino, y); ctx.closePath();
+        ctx.fillStyle = corpo; ctx.fill(); ctx.stroke();
+        if (skin === 'farol') for (const t of [0.25, 0.65]) { ctx.beginPath(); ctx.rect(x - w * 0.46, y - h * t - h * 0.12, w * 0.92, h * 0.12); ctx.fillStyle = topo; ctx.fill(); ctx.stroke(); }
+        if (skin === 'vigia') {
+            ctx.beginPath(); ctx.rect(x - w * 0.55, y - h - w * 0.35, w * 1.1, w * 0.35); ctx.fillStyle = corpo; ctx.fill(); ctx.stroke();
+            for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.rect(x - w * 0.55 + i * w * 0.42, y - h - w * 0.6, w * 0.26, w * 0.25); ctx.fill(); ctx.stroke(); }
+            ctx.beginPath(); ctx.moveTo(x, y - h - w * 0.6); ctx.lineTo(x, y - h - w * 1.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x, y - h - w * 1.5); ctx.lineTo(x + w * 0.6, y - h - w * 1.3); ctx.lineTo(x, y - h - w * 1.1); ctx.fillStyle = topo; ctx.fill(); ctx.stroke();
+        } else if (skin === 'farol') {
+            const gy = y - h - w * 0.35;
+            const g = ctx.createRadialGradient(x, gy, 0, x, gy, w * 1.8); g.addColorStop(0, 'rgba(255,230,140,.75)'); g.addColorStop(1, 'rgba(255,230,140,0)');
+            ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, gy, w * 1.8, 0, PI2); ctx.fill();
+            ctx.beginPath(); ctx.rect(x - w * 0.3, y - h - w * 0.55, w * 0.6, w * 0.55); ctx.fillStyle = '#ffe48a'; ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(x - w * 0.42, y - h - w * 0.55); ctx.lineTo(x, y - h - w * 1.05); ctx.lineTo(x + w * 0.42, y - h - w * 0.55); ctx.closePath(); ctx.fillStyle = P.tinta; ctx.fill();
+        } else {
+            const alto = skin === 'elfica' ? 0.55 : 0.42, larg = skin === 'sombria' ? 0.45 : 0.55;
+            ctx.beginPath(); ctx.moveTo(x - w * larg, y - h); ctx.lineTo(x, y - h - h * alto); ctx.lineTo(x + w * larg, y - h); ctx.closePath();
+            ctx.fillStyle = skin === 'sombria' ? '#26222c' : topo; ctx.fill(); ctx.stroke();
+            if (skin === 'mago' || skin === 'sombria') estrela(ctx, x, y - h - h * alto - w * 0.4, w * 0.45, P.cor ? C.corOf(f) : P.tinta);
+        }
+        ctx.beginPath(); ctx.rect(x - w * 0.09, y - h * 0.55, w * 0.18, h * 0.14); ctx.fillStyle = P.tinta; ctx.fill();
+        ctx.restore();
+    }
+
+    // Fenômenos: névoas coloridas, chuva, tempestade, terremoto, nevasca e auras mágicas
+    for (const f of lugares.filter((l) => l.type === 'phenomenon')) {
+        const F = C.forma(f), skin = C.skinOf(f), cor = C.corOf(f), r = rng(f.id * 23 + 3);
+        const caminho = (d = 1) => {
+            ctx.beginPath();
+            for (let i = 0; i <= 72; i++) {
+                const a = (i / 72) * PI2, b = f.size * d * C.borda(F, a), [x, z] = C.paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F);
+                i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z));
+            }
+            ctx.closePath();
+        };
+        const R = f.size * u * Math.max(F.sx, F.sz), cx = X(f.x), cy = Y(f.z);
+        const base = { chuva: '#6f8fb0', tempestade: '#3a4250', terremoto: '#8a6a44', nevasca: '#e8eef4' }[skin] || cor;
+        ctx.save();
+        const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+        g.addColorStop(0, rgba(base, skin === 'nevasca' ? 0.7 : 0.5)); g.addColorStop(0.7, rgba(base, 0.28)); g.addColorStop(1, rgba(base, 0));
+        caminho(); ctx.fillStyle = g; ctx.fill();
+        caminho(); ctx.setLineDash([4, 5]); ctx.strokeStyle = P.tinta; ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+        caminho(); ctx.clip();
+        const pts = (n, d1 = 0.95) => Array.from({ length: n }, () => { const [x, z] = C.pontoDentro(f, r, F, 0, d1); return [X(x), Y(z)]; });
+        const area = Math.max(1, (R * R) / 400);
+        switch (skin) {
+            case 'chuva': case 'tempestade': {
+                ctx.strokeStyle = skin === 'tempestade' ? P.tinta : (P.cor ? '#3d6a96' : P.tinta); ctx.globalAlpha = 0.55; ctx.lineWidth = 1;
+                for (const [x, y] of pts(Math.min(500, Math.round(area * (skin === 'tempestade' ? 14 : 9))))) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2.5, y + 8); ctx.stroke(); }
+                ctx.globalAlpha = 1;
+                for (const [x, y] of pts(Math.max(2, Math.round(area * 0.8)), 0.7)) nuvem(ctx, x, y - 6, clamp(R / 7, 7, 22), skin === 'tempestade' ? '#59606e' : '#eef0f2', P.tinta);
+                if (skin === 'tempestade') for (const [x, y] of pts(clamp(Math.round(area * 0.5), 1, 6), 0.6)) relampago(ctx, x, y, clamp(R / 5, 10, 30), P.tinta);
+                break;
+            }
+            case 'terremoto': {
+                ctx.strokeStyle = P.tinta; ctx.lineCap = 'round';
+                const nr = Math.max(3, Math.round(3 + f.size / 6));
+                for (let q = 0; q < nr; q++) {
+                    const a0 = (q / nr) * PI2 + r() * 0.5;
+                    ctx.beginPath(); ctx.moveTo(cx, cy);
+                    for (let i = 1; i <= 10; i++) {
+                        const a = a0 + (r() - 0.5) * 0.5, b = f.size * 0.95 * (i / 10) * C.borda(F, a), [x, z] = C.paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F);
+                        ctx.lineTo(X(x), Y(z));
+                    }
+                    ctx.lineWidth = 2.2; ctx.stroke(); ctx.lineWidth = 0.8; ctx.stroke();
+                }
+                break;
+            }
+            case 'nevasca':
+                ctx.strokeStyle = P.tinta; ctx.lineWidth = 0.8;
+                for (const [x, y] of pts(Math.min(400, Math.round(area * 8)))) floco(ctx, x, y, 2.4);
+                for (const [x, y] of pts(Math.max(2, Math.round(area * 0.6)), 0.7)) nuvem(ctx, x, y - 6, clamp(R / 7, 7, 22), '#f6f8fa', P.tinta);
+                break;
+            case 'magia':
+                for (const [x, y] of pts(Math.min(200, Math.round(area * 4)))) estrela(ctx, x, y, 2 + r() * 4, P.cor ? cor : P.tinta);
+                break;
+            default: // névoa
+                ctx.strokeStyle = P.cor ? escurecer(cor, 0.35) : P.tinta; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.1;
+                for (const [x, y] of pts(Math.min(160, Math.round(area * 3)))) {
+                    ctx.beginPath(); ctx.moveTo(x - 9, y); ctx.bezierCurveTo(x - 5, y - 3, x - 2, y + 3, x + 2, y); ctx.bezierCurveTo(x + 5, y - 3, x + 8, y + 2, x + 11, y); ctx.stroke();
+                }
+                ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+    }
+
     // Mar: navios e serpentes onde a água é funda
     if (opt.mar) {
         const fundos = [];
@@ -535,6 +678,9 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                 case 'lake': fonte = `italic ${clamp(12 + f.size * 0.2, 13, 22)}px 'IM Fell English', Georgia, serif`; cor = P.tintaAgua; esp = 3; break;
                 case 'ocean': fonte = `italic ${clamp(18 + f.size * 0.12, 22, 44)}px 'IM Fell English', Georgia, serif`; cor = P.tintaAgua; esp = 8; break;
                 case 'island': fonte = `italic ${clamp(13 + f.size * 0.15, 14, 24)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
+                case 'tower': fonte = `600 ${clamp(12 + f.size, 13, 18)}px Cinzel, Georgia, serif`; y += 14; esp = 0.5; break;
+                case 'ruins': fonte = `italic ${clamp(12 + f.size * 0.2, 13, 19)}px 'IM Fell English', Georgia, serif`; y += clamp(f.size * u / 9, 3, 14) + 12; esp = 1; break;
+                case 'phenomenon': fonte = `italic ${clamp(13 + f.size * 0.12, 14, 22)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
                 case 'road':
                 case 'river': {
                     const pts = C.rioPath(f), a = pts[Math.floor(pts.length * 0.45)], b = pts[Math.min(pts.length - 1, Math.floor(pts.length * 0.45) + 3)];
@@ -587,6 +733,33 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
     }
     ctx.globalCompositeOperation = 'source-over';
     ctx.restore();
+}
+
+// Estrela de quatro pontas (magia, torres arcanas)
+function estrela(ctx, x, y, s, cor) {
+    ctx.save(); ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * PI2 - Math.PI / 2, d = i % 2 ? s * 0.32 : s; i ? ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d) : ctx.moveTo(x + Math.cos(a) * d, y + Math.sin(a) * d); }
+    ctx.closePath(); ctx.fillStyle = cor; ctx.fill(); ctx.restore();
+}
+// Nuvem de contorno ondulado
+function nuvem(ctx, x, y, s, cor, tinta) {
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(x - s, y + s * 0.3);
+    ctx.arc(x - s * 0.55, y, s * 0.45, Math.PI * 0.8, Math.PI * 1.75);
+    ctx.arc(x, y - s * 0.25, s * 0.55, Math.PI * 1.15, Math.PI * 1.9);
+    ctx.arc(x + s * 0.6, y + s * 0.02, s * 0.42, Math.PI * 1.3, Math.PI * 0.2);
+    ctx.closePath(); ctx.fillStyle = cor; ctx.fill(); ctx.strokeStyle = tinta; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+}
+function relampago(ctx, x, y, s, tinta) {
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(x, y - s * 0.5); ctx.lineTo(x - s * 0.22, y + s * 0.05); ctx.lineTo(x + s * 0.02, y + s * 0.05); ctx.lineTo(x - s * 0.12, y + s * 0.6);
+    ctx.lineTo(x + s * 0.25, y - s * 0.08); ctx.lineTo(x + s * 0.02, y - s * 0.08); ctx.lineTo(x + s * 0.14, y - s * 0.5); ctx.closePath();
+    ctx.fillStyle = '#ffe36e'; ctx.fill(); ctx.strokeStyle = tinta; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
+}
+function floco(ctx, x, y, s) {
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI; ctx.moveTo(x - Math.cos(a) * s, y - Math.sin(a) * s); ctx.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s); }
+    ctx.stroke();
 }
 
 function texto(ctx, s, x, y, fonte, cor, halo, esp, ang, lw) {
@@ -706,7 +879,7 @@ function barraEscala(ctx, x, y, u, size, P) {
 }
 
 function legenda(ctx, xd, y, lugares, P, C) {
-    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha' };
+    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno' };
     const tipos = Object.keys(NOMES).filter((t) => lugares.some((l) => l.type === t));
     if (!tipos.length) return;
     const w = 150, h = 26 + tipos.length * 22, x = xd - w;
@@ -721,6 +894,9 @@ function legenda(ctx, xd, y, lugares, P, C) {
         else if (t === 'village') predio(ctx, ix, yy + 4, 8, 8, 'gable', P, P.cor ? '#9a4a2c' : escurecer(P.terra, 0.35), P.cor ? '#efe3c4' : clarear(P.terra, 0.3));
         else if (t === 'mountain') pico(ctx, ix, yy + 5, 18, 14, 'classica', P, C.theme.cores.montanha, r);
         else if (t === 'forest') arvore(null, ctx, ix, yy + 5, 13, 'carvalhos', P.cor ? '#4f7a3a' : P.copa, P, r);
+        else if (t === 'tower') { ctx.beginPath(); ctx.rect(ix - 3, yy - 8, 6, 15); ctx.fillStyle = P.cor ? '#d8ccb0' : P.halo; ctx.fill(); ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; ctx.stroke(); ctx.beginPath(); ctx.moveTo(ix - 5, yy - 8); ctx.lineTo(ix, yy - 15); ctx.lineTo(ix + 5, yy - 8); ctx.closePath(); ctx.fillStyle = P.cor ? '#a8322a' : P.tinta; ctx.fill(); ctx.stroke(); }
+        else if (t === 'ruins') { ctx.fillStyle = P.cor ? '#a39c8c' : P.halo; ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; for (const [dx, h] of [[-7, 12], [-1, 7], [5, 10]]) { ctx.beginPath(); ctx.rect(ix + dx, yy + 6 - h, 4, h); ctx.fill(); ctx.stroke(); } }
+        else if (t === 'phenomenon') nuvem(ctx, ix, yy + 2, 10, P.cor ? '#c9b8e8' : P.halo, P.tinta);
         else {
             ctx.fillStyle = P.agua; ctx.strokeStyle = P.tinta;
             if (t === 'river') { ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(ix - 9, yy); ctx.quadraticCurveTo(ix, yy - 6, ix + 9, yy); ctx.strokeStyle = P.agua; ctx.stroke(); }

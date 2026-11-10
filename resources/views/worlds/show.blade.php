@@ -64,6 +64,15 @@
         <button type="button" class="tool" data-tool="village">
             <svg viewBox="0 0 24 24"><path d="M4 20v-8l8-7 8 7v8zM10 20v-5h4v5"/></svg>Vila
         </button>
+        <button type="button" class="tool" data-tool="tower">
+            <svg viewBox="0 0 24 24"><path d="M8 21V9h8v12M7 9V5h2v2h2V5h2v2h2V5h2v4M6 21h12M11 21v-4h2v4M11 12h2"/></svg>Torre
+        </button>
+        <button type="button" class="tool" data-tool="ruins">
+            <svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V9M5 9h4M9 21v-8M14 21v-5M18 21V8l-2 2M14 16l2-1M3 9l3-4 3 4"/></svg>Ruínas
+        </button>
+        <button type="button" class="tool" data-tool="phenomenon">
+            <svg viewBox="0 0 24 24"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 8a3.5 3.5 0 0 1 0 7zM8 18l-1 3M12 18l-1 3M16 18l-1 3M13 10l-2 3h3l-2 3"/></svg>Fenômeno
+        </button>
         <button type="button" class="tool" data-tool="fog">
             <svg viewBox="0 0 24 24"><path d="M4 10h13a3 3 0 1 0-3-3M3 14h17M6 18h11a3 3 0 1 1-3 3"/></svg>Névoa
         </button>

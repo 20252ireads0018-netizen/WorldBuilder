@@ -31,6 +31,9 @@ const TYPES = {
     ocean:    { label: 'Oceano',   fresh: 'Mar sem nome',      size: [20, 100, 55, 1],   sizeLabel: 'Extensão', corLabel: 'Cor do mar' },
     island:   { label: 'Ilha',     fresh: 'Ilha sem nome',     size: [4, 60, 14, 1],     sizeLabel: 'Extensão', corLabel: 'Cor do chão' },
     road:     { label: 'Estrada',  fresh: 'Estrada sem nome',  size: [0.6, 5, 1.4, 0.1], sizeLabel: 'Largura',  corLabel: 'Cor da estrada' },
+    tower:    { label: 'Torre',    fresh: 'Torre sem nome',    size: [1.5, 10, 3.5, 0.5],     sizeLabel: 'Tamanho',  corLabel: 'Cor do telhado e detalhes' },
+    ruins:    { label: 'Ruínas',   fresh: 'Ruínas sem nome',   size: [2, 25, 9, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor da pedra' },
+    phenomenon: { label: 'Fenômeno', fresh: 'Fenômeno sem nome', size: [4, 80, 16, 1],   sizeLabel: 'Alcance',  corLabel: 'Cor do fenômeno' },
 };
 const LINHA = new Set(['river', 'road']);
 const DESENHO = new Set(['river', 'road', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
@@ -40,10 +43,10 @@ const trocasDe = (t) => GRUPOS.find((g) => g.includes(t)) || [t];
 // Tamanho máximo cresce com o mapa
 function tamanhoMax(type) {
     const base = TYPES[type].size[1];
-    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02 }[type];
+    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02, tower: 0.02, ruins: 0.12, phenomenon: 0.7 }[type];
     return Math.max(base, Math.round(Math.max(60, HALF) * k));
 }
-const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
+const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas', tower: 'Torres', ruins: 'Ruínas', phenomenon: 'Fenômenos' };
 const HINTS = {
     select:   'Clique num lugar para abri-lo e arraste-o para mover. As bolinhas na borda esticam só para aquele lado e a vermelha gira (Shift: giro livre). Botão direito abre o menu rápido.',
     mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
@@ -56,6 +59,9 @@ const HINTS = {
     redraw:   'Clique para marcar o novo traçado e aperte Enter (ou Concluir) para trocar. Esc cancela.',
     island:   'Clique no mapa (ou no meio do mar) para erguer uma ilha. Clique de novo dentro dela para aumentar.',
     road:     'Clique para marcar o caminho da estrada e aperte Enter para concluir.',
+    tower:    'Clique no mapa para erguer uma torre (de vigia, do mago, farol...). Clique de novo nela para aumentar.',
+    ruins:    'Clique no mapa para marcar ruínas (castelo, templo, círculo de pedras...). Clique de novo dentro delas para aumentar.',
+    phenomenon: 'Clique no mapa para criar um fenômeno: névoa colorida, chuva, tempestade, terremoto, nevasca ou aura mágica. O tipo e a cor ficam no painel.',
     fog:      'Pinte o mapa: clique e arraste para revelar (ou cobrir) áreas para os jogadores.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
 };
@@ -71,6 +77,9 @@ const SKINS = {
     ocean: { mar: 'Mar aberto', tropical: 'Tropical', tempestuoso: 'Tempestuoso', gelado: 'Gelado', abissal: 'Abissal' },
     island: { verde: 'Verdejante', areia: 'Praia de areia', tropical: 'Tropical', vulcanica: 'Vulcânica', gelo: 'Gelada' },
     road: { terra: 'Estrada de terra', pedra: 'Calçada de pedra', trilha: 'Trilha', real: 'Estrada real' },
+    tower: { vigia: 'Torre de vigia', mago: 'Torre do mago', farol: 'Farol', sombria: 'Torre sombria', elfica: 'Torre élfica' },
+    ruins: { castelo: 'Castelo em ruínas', templo: 'Templo antigo', pedras: 'Círculo de pedras', cidade: 'Cidade perdida', arcana: 'Ruínas arcanas' },
+    phenomenon: { nevoa: 'Névoa colorida', chuva: 'Chuva', tempestade: 'Tempestade', terremoto: 'Terremoto', nevasca: 'Nevasca', magia: 'Aura mágica' },
 };
 // Cor própria de cada skin (null = cor do tema: montanha ou água)
 const SKIN_COR = {
@@ -81,6 +90,9 @@ const SKIN_COR = {
     road: { terra: null, pedra: '#a39a8a', trilha: '#93744c', real: '#c7ad78' },
     city: { medieval: null, elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
     ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
+    tower: { vigia: '#a8322a', mago: '#5b4a9a', farol: '#b8322a', sombria: '#d0302a', elfica: '#4d7a4a' },
+    ruins: { castelo: '#a39c8c', templo: '#d8d0bc', pedras: '#8c8a84', cidade: '#b0a48a', arcana: '#4fd1c5' },
+    phenomenon: { nevoa: '#9a6fd0', chuva: '#9cc0e0', tempestade: '#454c5a', terremoto: '#3a2618', nevasca: '#ffffff', magia: '#4fd1c5' },
 };
 SKIN_COR.river = SKIN_COR.lake;
 SKIN_COR.village = SKIN_COR.city;
@@ -92,6 +104,9 @@ const PALETAS = {
     city: ['#9a4a2c', '#4d7a4a', '#3f6f9a', '#4a4136', '#7a3a2a', '#a8322a', '#c9a23a', '#6b5a8a'],
     island: ['#7fa65a', '#e3cf92', '#9cc95a', '#c2b280', '#4d4240', '#e6edf2'],
     road: ['#8a6a44', '#a39a8a', '#93744c', '#c7ad78', '#5a4a3a', '#d8c8a8'],
+    tower: ['#a8322a', '#5b4a9a', '#2f5a8a', '#4d7a4a', '#c9a23a', '#d0302a', '#3a3530', '#e8e2d2'],
+    ruins: ['#a39c8c', '#d8d0bc', '#8c8a84', '#b0a48a', '#6f7f4a', '#7a6a8a', '#4fd1c5', '#c9a96e'],
+    phenomenon: ['#9a6fd0', '#4fd1c5', '#e05a8a', '#6fd06f', '#e0b04a', '#9cc0e0', '#454c5a', '#ffffff'],
 };
 PALETAS.river = PALETAS.ocean = PALETAS.lake;
 PALETAS.village = PALETAS.city;
@@ -197,7 +212,7 @@ function distSeg(px, pz, a, b) {
 // Nome para mostrar em listas e menus (lugares podem ficar sem nome)
 function nomeDe(f) { return f?.name || (TYPES[f?.type]?.label || 'Lugar') + ' sem nome'; }
 /* ---------- Formato dos lugares: proporção, giro, contorno irregular e curvas dos rios ---------- */
-const IRREG_PADRAO = { ocean: 0.45, lake: 0.12, forest: 0.25, mountain: 0.1, city: 0, village: 0 };
+const IRREG_PADRAO = { ocean: 0.45, lake: 0.12, forest: 0.25, mountain: 0.1, city: 0, village: 0, ruins: 0.15, phenomenon: 0.35, tower: 0 };
 function forma(f) {
     const s = f.shape || {}, e = s.esticar ?? 1, g = ((s.giro ?? 0) * Math.PI) / 180;
     return { sx: Math.sqrt(e), sz: 1 / Math.sqrt(e), c: Math.cos(g), s: Math.sin(g), irr: s.irregular ?? IRREG_PADRAO[f.type] ?? 0, seed: (f.id || 1) * 0.6180339 };
@@ -398,7 +413,7 @@ camera.position.set(0, 120, 150);
 const controls = new THREE.OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 15;
+controls.minDistance = 6;
 controls.maxDistance = 330;
 
 const ambient = new THREE.AmbientLight(0xfff0d0, 0.85);
@@ -646,6 +661,7 @@ const G = {
     ball: new THREE.IcosahedronGeometry(1, 0),
     rock: new THREE.DodecahedronGeometry(1, 0),
     gem: new THREE.OctahedronGeometry(1, 0),
+    nuvem: new THREE.SphereGeometry(1, 14, 10),
 };
 // Base das peças em y=0 (exceto domo e bola, que já nascem do centro)
 ['box', 'pyr', 'cone', 'cyl'].forEach((k) => G[k].translate(0, 0.5, 0));
@@ -927,8 +943,359 @@ function estrada(f) {
     faixa(w, cor, 0.16, skin === 'trilha');
 }
 
+/* ---------- Torres, ruínas e fenômenos (névoa, chuva, tempestade, terremoto, nevasca, magia) ---------- */
+const chaoEm = (x, z) => Math.max(heightAt(x, z), 0.2) - 0.1;
+// Peças criadas aqui (geometria própria) são descartadas a cada reconstrução
+function proprio(o) { o.userData.proprio = true; props.add(o); return o; }
+function giroDe(F) { return -Math.atan2(F.s, F.c); }
+
+function torre(f) {
+    if (!visivelAgora(f.x, f.z)) return;
+    const g = new THREE.Group(), skin = skinOf(f), cor = corOf(f), F = forma(f);
+    const s = f.size, H = s * 4.2 * (f.shape?.altura ?? 1), pedra = '#b9ae98';
+    switch (skin) {
+        case 'mago':
+            peca(g, 'cyl', '#8f8aa0', 0, 0, 0, s * 0.6, H * 0.6, s * 0.6);
+            peca(g, 'cyl', '#a29cb5', 0, H * 0.6, 0, s * 0.45, H * 0.3, s * 0.45);
+            peca(g, 'cyl', '#8f8aa0', 0, H * 0.82, 0, s * 0.62, s * 0.14, s * 0.62);
+            peca(g, 'cone', cor, 0, H * 0.9, 0, s * 0.7, H * 0.38, s * 0.7);
+            peca(g, 'gem', cor, 0, H * 1.42, 0, s * 0.22, s * 0.38, s * 0.22, 0, 1);
+            break;
+        case 'farol':
+            for (let i = 0; i < 4; i++) peca(g, 'cyl', i % 2 ? '#f2ece0' : cor, 0, i * H * 0.2, 0, s * (0.62 - i * 0.05), H * 0.2, s * (0.62 - i * 0.05));
+            peca(g, 'cyl', '#3a3530', 0, H * 0.8, 0, s * 0.55, s * 0.14, s * 0.55);
+            peca(g, 'ball', '#ffe48a', 0, H * 0.8 + s * 0.45, 0, s * 0.3, s * 0.3, s * 0.3, 0, 1);
+            peca(g, 'cone', '#3a3530', 0, H * 0.8 + s * 0.72, 0, s * 0.45, s * 0.5, s * 0.45);
+            break;
+        case 'sombria':
+            peca(g, 'cyl', '#2e2a33', 0, 0, 0, s * 0.65, H * 0.85, s * 0.65);
+            for (let i = 0; i < 5; i++) {
+                const a = (i / 5) * Math.PI * 2;
+                peca(g, 'cone', '#2e2a33', Math.cos(a) * s * 0.55, H * 0.85, Math.sin(a) * s * 0.55, s * 0.16, s * 0.9, s * 0.16);
+            }
+            peca(g, 'cone', '#1f1c24', 0, H * 0.85, 0, s * 0.42, H * 0.38, s * 0.42);
+            peca(g, 'gem', cor, 0, H * 0.72, s * 0.64, s * 0.14, s * 0.24, s * 0.08, 0, 1.2);
+            break;
+        case 'elfica':
+            peca(g, 'cyl', '#efe9da', 0, 0, 0, s * 0.38, H * 1.1, s * 0.38);
+            peca(g, 'cyl', '#efe9da', 0, H * 0.72, 0, s * 0.62, s * 0.16, s * 0.62);
+            peca(g, 'cone', cor, 0, H * 1.1, 0, s * 0.44, H * 0.42, s * 0.44);
+            break;
+        default: // torre de vigia
+            peca(g, 'cyl', pedra, 0, 0, 0, s * 0.6, H, s * 0.6);
+            peca(g, 'cyl', pedra, 0, H, 0, s * 0.8, s * 0.35, s * 0.8);
+            for (let i = 0; i < 8; i++) {
+                const a = (i / 8) * Math.PI * 2;
+                peca(g, 'box', pedra, Math.cos(a) * s * 0.68, H + s * 0.35, Math.sin(a) * s * 0.68, s * 0.22, s * 0.28, s * 0.22, -a);
+            }
+            peca(g, 'cyl', '#5a3d24', 0, H + s * 0.35, 0, 0.05 * s, s * 1.4, 0.05 * s);
+            peca(g, 'box', cor, s * 0.27, H + s * 1.32, 0, s * 0.5, s * 0.3, 0.04 * s);
+    }
+    g.scale.set(F.sx, 1, F.sz);
+    g.rotation.y = giroDe(F);
+    g.position.set(f.x, chaoEm(f.x, f.z), f.z);
+    props.add(g);
+}
+
+function ruina(f) {
+    const g = new THREE.Group(), r = rng(f.id * 19 + 7), skin = skinOf(f), cor = corOf(f), F = forma(f);
+    const dens = f.shape?.densidade ?? 1, k = Math.max(0.6, Math.min(2.5, f.size / 6)), ry = giroDe(F);
+    const ok = (x, z) => visivelAgora(x, z) && sample(x, z).w < 0.3;
+    const musgo = '#6f7f4a';
+    const naBorda = (a, d) => paraMundo(f, Math.cos(a) * f.size * d * borda(F, a), Math.sin(a) * f.size * d * borda(F, a), F);
+    switch (skin) {
+        case 'templo': {
+            if (ok(f.x, f.z)) peca(g, 'box', cor, f.x, chaoEm(f.x, f.z) - 0.3, f.z, f.size * 1.5 * F.sx, 0.7 * k, f.size * 1.5 * F.sz, ry);
+            const m = Math.max(6, Math.round(f.size * 1.6 * dens));
+            for (let i = 0; i < m; i++) {
+                const a = (i / m) * Math.PI * 2, [x, z] = naBorda(a, 0.62);
+                if (!ok(x, z)) continue;
+                const y = chaoEm(x, z) + 0.3 * k;
+                if (r() < 0.2) { peca(g, 'box', cor, x, y, z, 2.6 * k, 0.5 * k, 0.5 * k, r() * 6); continue; } // coluna caída
+                const h = (0.35 + r() * 0.65) * 3.4 * k;
+                peca(g, 'cyl', cor, x, y, z, 0.3 * k, h, 0.3 * k);
+                if (h > 2.6 * k) peca(g, 'box', cor, x, y + h, z, 0.8 * k, 0.25 * k, 0.8 * k, ry);
+            }
+            break;
+        }
+        case 'pedras': {
+            const m = Math.max(5, Math.round(f.size * 1.3 * dens));
+            for (let i = 0; i < m; i++) {
+                const a = (i / m) * Math.PI * 2, [x, z] = naBorda(a, 0.7);
+                if (!ok(x, z)) continue;
+                const h = (1.6 + r() * 1.2) * k;
+                peca(g, 'box', cor, x, chaoEm(x, z), z, 0.55 * k, h, 0.3 * k, -a);
+                if (i % 2 === 0 && r() < 0.5) {
+                    const [x2, z2] = naBorda(((i + 1) / m) * Math.PI * 2, 0.7);
+                    peca(g, 'box', cor, (x + x2) / 2, chaoEm(x, z) + h, (z + z2) / 2, Math.hypot(x2 - x, z2 - z) + 0.5 * k, 0.3 * k, 0.4 * k, -Math.atan2(z2 - z, x2 - x));
+                }
+            }
+            if (ok(f.x, f.z)) peca(g, 'box', cor, f.x, chaoEm(f.x, f.z), f.z, 1.2 * k, 0.6 * k, 0.8 * k, ry);
+            break;
+        }
+        case 'cidade': {
+            const n = Math.min(160, Math.round((5 + f.size * 2.4) * dens));
+            for (let i = 0; i < n; i++) {
+                const [x, z] = pontoDentro(f, r, F, 0, 0.85);
+                if (!ok(x, z)) continue;
+                const w = (0.9 + r() * 1.8) * k;
+                peca(g, 'box', r() < 0.3 ? musgo : corVar(cor, r, 0.1), x, chaoEm(x, z), z, w, (0.3 + r() * 1.3) * k, 0.3 * k, r() * Math.PI);
+                if (r() < 0.25) peca(g, 'rock', '#8a8478', x + r() - 0.5, chaoEm(x, z) + 0.15, z + r() - 0.5, 0.35 * k, 0.25 * k, 0.35 * k, r() * 6);
+            }
+            break;
+        }
+        case 'arcana': {
+            const n = Math.min(80, Math.round((4 + f.size * 1.2) * dens));
+            for (let i = 0; i < n; i++) {
+                const [x, z] = pontoDentro(f, r, F, 0.15, 0.9);
+                if (!ok(x, z)) continue;
+                const y = chaoEm(x, z);
+                peca(g, 'rock', '#6f6a78', x, y + 0.2 * k, z, (0.5 + r() * 0.6) * k, (0.4 + r() * 0.5) * k, (0.5 + r() * 0.6) * k, r() * 6);
+                if (r() < 0.55) peca(g, 'gem', cor, x, y + (1.4 + r() * 1.6) * k, z, 0.18 * k, 0.32 * k, 0.18 * k, r() * 6, 1.1);
+            }
+            if (ok(f.x, f.z)) {
+                const y = chaoEm(f.x, f.z);
+                peca(g, 'box', '#4a4552', f.x, y, f.z, 0.9 * k, 4.2 * k, 0.9 * k, ry);
+                peca(g, 'pyr', '#4a4552', f.x, y + 4.2 * k, f.z, 0.66 * k, 0.9 * k, 0.66 * k, ry);
+                peca(g, 'box', cor, f.x, y + 0.6 * k, f.z, 0.95 * k, 2.6 * k, 0.12 * k, ry, 1);
+            }
+            break;
+        }
+        default: { // castelo em ruínas: muralha com brechas, torres quebradas e entulho
+            const m = Math.max(10, Math.round(f.size * 2.2 * Math.max(F.sx, F.sz)));
+            for (let i = 0; i < m; i++) {
+                if (r() < 0.32) continue;
+                const [x0, z0] = naBorda((i / m) * Math.PI * 2, 0.85), [x1, z1] = naBorda(((i + 1) / m) * Math.PI * 2, 0.85);
+                const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+                if (!ok(mx, mz)) continue;
+                peca(g, 'box', corVar(cor, r, 0.08), mx, chaoEm(mx, mz), mz, Math.hypot(x1 - x0, z1 - z0) * 1.04, (0.6 + r() * 1.8) * k, 0.5 * k, -Math.atan2(z1 - z0, x1 - x0));
+            }
+            for (let i = 0; i < 3; i++) {
+                const [x, z] = naBorda(r() * Math.PI * 2, 0.85);
+                if (ok(x, z)) peca(g, 'cyl', cor, x, chaoEm(x, z), z, 0.9 * k, (1.5 + r() * 2.6) * k, 0.9 * k);
+            }
+            if (ok(f.x, f.z)) peca(g, 'box', cor, f.x, chaoEm(f.x, f.z), f.z, 2.6 * k, 2.4 * k, 2 * k, ry);
+            const n = Math.round(f.size * 1.2 * dens);
+            for (let i = 0; i < n; i++) {
+                const [x, z] = pontoDentro(f, r, F, 0, 0.75);
+                if (ok(x, z)) peca(g, 'rock', '#8a8478', x, chaoEm(x, z) + 0.1, z, (0.3 + r() * 0.5) * k, 0.3 * k, (0.3 + r() * 0.5) * k, r() * 6);
+            }
+        }
+    }
+    props.add(g);
+}
+
+// Manto translúcido que acompanha o relevo, mais forte no centro e sumindo na borda
+let texAura = null;
+function auraTex() {
+    if (texAura) return texAura;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128;
+    const x = cv.getContext('2d'), gr = x.createRadialGradient(64, 64, 6, 64, 64, 64);
+    gr.addColorStop(0, '#fff'); gr.addColorStop(0.55, '#bbb'); gr.addColorStop(1, '#000');
+    x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+    return (texAura = new THREE.CanvasTexture(cv));
+}
+function manto(f, F, dy, hex, op, aditivo = false, alcance = 1) {
+    const AN = 56, RN = 8, pos = [], uv = [], idx = [], vis = [];
+    const add = (x, z, t, a) => {
+        pos.push(x, Math.max(heightAt(x, z), 0) + dy, z);
+        uv.push(0.5 + Math.cos(a) * t * 0.5, 0.5 + Math.sin(a) * t * 0.5);
+        vis.push(visivelAgora(x, z));
+    };
+    add(f.x, f.z, 0, 0);
+    for (let j = 1; j <= RN; j++) {
+        const t = j / RN;
+        for (let i = 0; i < AN; i++) {
+            const a = (i / AN) * Math.PI * 2, b = f.size * alcance * t * borda(F, a);
+            const [x, z] = paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F);
+            add(x, z, t, a);
+        }
+    }
+    const v = (j, i) => (j === 0 ? 0 : 1 + (j - 1) * AN + (i % AN));
+    const tri = (a, b, c) => { if (vis[a] && vis[b] && vis[c]) idx.push(a, b, c); };
+    for (let i = 0; i < AN; i++) tri(0, v(1, i), v(1, i + 1));
+    for (let j = 1; j < RN; j++) for (let i = 0; i < AN; i++) { tri(v(j, i), v(j + 1, i), v(j + 1, i + 1)); tri(v(j, i), v(j + 1, i + 1), v(j, i + 1)); }
+    if (!idx.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    const m = new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: op, alphaMap: auraTex(), depthWrite: false, side: THREE.DoubleSide,
+        blending: aditivo ? THREE.AdditiveBlending : THREE.NormalBlending });
+    const me = new THREE.Mesh(g, m);
+    me.renderOrder = 4;
+    proprio(me);
+}
+// Faixa fina sobre o chão (rachaduras do terremoto)
+function fita(pts, largura, hex) {
+    const pos = [], idx = [];
+    pts.forEach(([x, z], i) => {
+        const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, w = largura * (1 - (i / pts.length) * 0.85) / 2;
+        for (const s of [-1, 1]) { const px = x - (dz / l) * w * s, pz = z + (dx / l) * w * s; pos.push(px, Math.max(heightAt(px, pz), 0) + 0.12, pz); }
+        if (i) idx.push(i * 2 - 2, i * 2 - 1, i * 2, i * 2 - 1, i * 2 + 1, i * 2);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    proprio(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: hex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })));
+}
+function raio3d(pts, esp) {
+    const g = new THREE.Group(), cima = new THREE.Vector3(0, 1, 0);
+    const m = new THREE.MeshBasicMaterial({ color: '#fffbe0', depthTest: false });
+    const halo = new THREE.MeshBasicMaterial({ color: '#ffe680', transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false });
+    for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1], d = new THREE.Vector3().subVectors(b, a), len = d.length();
+        for (const [raio, mt] of [[esp, m], [esp * 3, halo]]) {
+            const c = new THREE.Mesh(new THREE.CylinderGeometry(raio, raio, len + raio, 6), mt);
+            c.position.copy(a).addScaledVector(d, 0.5);
+            c.quaternion.setFromUnitVectors(cima, d.clone().normalize());
+            c.renderOrder = 8;
+            g.add(c);
+        }
+    }
+    proprio(g);
+}
+
+function fenomeno(f) {
+    const skin = skinOf(f), cor = corOf(f), F = forma(f), r = rng(f.id * 23 + 3);
+    const dens = f.shape?.densidade ?? 1, alt = f.shape?.altura ?? 1, esc2 = Math.min(3, 0.6 + f.size / 20);
+    const H = (8 + f.size * 0.22) * alt;
+    const topo = (x, z) => Math.max(heightAt(x, z), 0);
+    const nuvens = (hex, op, qtd) => {
+        const lista = [];
+        // cada nuvem é um cacho de bolas lisas: uma maior no meio e outras menores em volta
+        for (let i = 0; i < qtd; i++) {
+            const [x, z] = pontoDentro(f, r, F, 0, 0.8);
+            if (!visivelAgora(x, z)) continue;
+            const s = (0.7 + r() * 0.8) * esc2, y = topo(x, z) * 0.6 + H + r() * 1.5;
+            lista.push({ x, y, z, sx: s * 1.5, sy: s * 0.85, sz: s * 1.3, ry: r() * 6, c: corVar(hex, r, 0.06) });
+            for (let j = 0, n = 3 + Math.floor(r() * 3); j < n; j++) {
+                const a = r() * Math.PI * 2, d = s * (0.9 + r() * 0.8), k = s * (0.45 + r() * 0.4);
+                lista.push({ x: x + Math.cos(a) * d, y: y - s * 0.15 + r() * s * 0.3, z: z + Math.sin(a) * d, sx: k * 1.3, sy: k * 0.8, sz: k * 1.2, ry: r() * 6, c: corVar(hex, r, 0.06) });
+            }
+        }
+        if (lista.length) {
+            const m = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: op < 1, opacity: op, depthWrite: op >= 1 });
+            m.emissive = new THREE.Color(hex).multiplyScalar(0.3);
+            instancias(G.nuvem, m, lista);
+        }
+        return lista;
+    };
+    const gotas = (hex, op, qtd, tam, inclina) => {
+        const pos = [];
+        for (let i = 0; i < qtd; i++) {
+            const [x, z] = pontoDentro(f, r, F, 0, 0.82);
+            if (!visivelAgora(x, z)) continue;
+            const y0 = topo(x, z), y1 = y0 * 0.6 + H - 0.5, y = y0 + r() * (y1 - y0);
+            pos.push(x, y, z, x + inclina, Math.max(y0, y - tam), z + inclina * 0.5);
+        }
+        if (!pos.length) return;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        proprio(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: op })));
+    };
+    const pontos = (hex, qtd, tam, aditivo, yMin = 0) => {
+        const pos = [];
+        for (let i = 0; i < qtd; i++) {
+            const [x, z] = pontoDentro(f, r, F, 0, 0.9);
+            if (!visivelAgora(x, z)) continue;
+            const y0 = topo(x, z);
+            pos.push(x, y0 + yMin + r() * (H - yMin), z);
+        }
+        if (!pos.length) return;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        proprio(new THREE.Points(g, new THREE.PointsMaterial({ color: hex, size: tam, transparent: true, opacity: 0.9, depthWrite: false,
+            blending: aditivo ? THREE.AdditiveBlending : THREE.NormalBlending })));
+    };
+    const area = f.size * f.size * F.sx * F.sz;
+    switch (skin) {
+        case 'chuva':
+            nuvens('#d9dde2', 0.95, Math.round((6 + f.size * 0.8) * dens));
+            gotas(cor, 0.55, Math.min(2500, Math.round(area * 0.7 * dens)), 1.6, 0.25);
+            manto(f, F, 0.25, '#40607e', 0.2);
+            break;
+        case 'tempestade': {
+            const nv = nuvens(cor, 0.97, Math.round((9 + f.size * 1.1) * dens));
+            gotas('#9db4c8', 0.6, Math.min(3500, Math.round(area * 1.1 * dens)), 2.2, 0.6);
+            manto(f, F, 0.25, '#1e2a36', 0.3);
+            const nb = Math.min(8, 2 + Math.round(f.size / 10 * dens));
+            for (let b = 0; b < nb && nv.length; b++) {
+                const c = nv[Math.floor(r() * nv.length)], y0 = c.y - c.sy * 0.5, y1 = topo(c.x, c.z);
+                const pts = [], passos = 7;
+                for (let i = 0; i <= passos; i++) {
+                    const t = i / passos, j = i && i < passos ? (r() - 0.5) * 2.4 * esc2 : 0;
+                    pts.push(new THREE.Vector3(c.x + j + t * (r() - 0.5), y0 + (y1 - y0) * t, c.z + (r() - 0.5) * 1.6 * (i && i < passos)));
+                }
+                raio3d(pts, 0.08 * esc2);
+            }
+            break;
+        }
+        case 'terremoto': {
+            manto(f, F, 0.6, '#b08a5a', 0.22);
+            const nr = Math.max(3, Math.round((3 + f.size / 6) * dens)), pedras = [];
+            for (let q = 0; q < nr; q++) {
+                const a0 = (q / nr) * Math.PI * 2 + r() * 0.5, pts = [];
+                let a = a0;
+                for (let i = 0; i <= 12; i++) {
+                    const t = i / 12, b = f.size * 0.95 * t * borda(F, a);
+                    pts.push(paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F));
+                    a = a0 + (r() - 0.5) * 0.5;
+                }
+                if (pts.every(([x, z]) => visivelAgora(x, z))) fita(pts, (0.6 + r() * 0.6) * esc2, cor);
+                for (let i = 2; i < pts.length; i += 2) {
+                    const [x, z] = pts[i];
+                    if (visivelAgora(x, z) && r() < 0.7) pedras.push({ x: x + (r() - 0.5) * 1.5, y: topo(x, z), z: z + (r() - 0.5) * 1.5, sx: 0.4 * esc2, sy: 0.3 * esc2, sz: 0.5 * esc2, rx: r(), ry: r() * 6, rz: r(), c: corVar('#7a6a58', r) });
+                }
+            }
+            if (pedras.length) instancias(G.rock, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), pedras);
+            break;
+        }
+        case 'nevasca':
+            nuvens('#eef2f6', 0.96, Math.round((6 + f.size * 0.8) * dens));
+            pontos(cor, Math.min(4000, Math.round(area * 1.3 * dens)), 0.75, false);
+            manto(f, F, 0.3, '#ffffff', 0.5);
+            break;
+        case 'magia': {
+            manto(f, F, 0.6, cor, 0.4, true);
+            manto(f, F, 3.5 * alt, cor, 0.16, true, 0.8);
+            const gemas = [];
+            for (let i = 0, n = Math.round((3 + f.size * 0.7) * dens); i < n; i++) {
+                const [x, z] = pontoDentro(f, r, F, 0, 0.8);
+                if (!visivelAgora(x, z)) continue;
+                const s = (0.25 + r() * 0.35) * esc2;
+                gemas.push({ x, y: topo(x, z) + (1.5 + r() * 4) * alt, z, sx: s, sy: s * 1.8, sz: s, ry: r() * 6, c: corVar(cor, r, 0.3) });
+            }
+            if (gemas.length) {
+                const m = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+                m.emissive = new THREE.Color(cor).multiplyScalar(0.7);
+                instancias(G.gem, m, gemas);
+            }
+            pontos(cor, Math.min(1500, Math.round(area * 0.5 * dens)), 0.45, true, 0.5);
+            break;
+        }
+        default: { // névoa colorida
+            manto(f, F, 1.2 * alt, cor, 0.5);
+            manto(f, F, 3 * alt, cor, 0.32, false, 0.92);
+            manto(f, F, 5.5 * alt, cor, 0.18, false, 0.8);
+            const lista = [];
+            for (let i = 0, n = Math.round((4 + f.size * 1.2) * dens); i < n; i++) {
+                const [x, z] = pontoDentro(f, r, F, 0, 0.8);
+                if (!visivelAgora(x, z)) continue;
+                const s = (1.2 + r() * 2) * esc2;
+                lista.push({ x, y: topo(x, z) + (0.8 + r() * 3) * alt, z, sx: s * 1.8, sy: s * 0.6, sz: s * 1.5, ry: r() * 6, c: corVar(cor, r, 0.1) });
+            }
+            if (lista.length) instancias(G.ball, new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false }), lista);
+        }
+    }
+}
+
 function buildProps() {
-    props.children.forEach((c) => { if (c.isInstancedMesh) { c.material.dispose(); c.dispose?.(); } });
+    props.children.forEach((c) => {
+        if (c.isInstancedMesh) { c.material.dispose(); c.dispose?.(); }
+        if (c.userData.proprio) c.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+    });
     props.clear();
     contorno = theme.estilo !== 'natural';
     inkMat.color.set(theme.cores.tinta);
@@ -938,6 +1305,9 @@ function buildProps() {
         else if (f.type === 'mountain') enfeitesMontanha(f);
         else if (f.type === 'lake') juncos(f);
         else if (f.type === 'road') estrada(f);
+        else if (f.type === 'tower') torre(f);
+        else if (f.type === 'ruins') ruina(f);
+        else if (f.type === 'phenomenon') fenomeno(f);
     }
 }
 
@@ -950,7 +1320,9 @@ function anchor(f) {
         const pts = rioPath(f), p = pts[Math.floor(pts.length / 2)];
         x = p[0]; z = p[1];
     }
-    const up = { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1 }[f.type];
+    const up = f.type === 'tower' ? f.size * 4.6 * (f.shape?.altura ?? 1) + 2.5
+        : f.type === 'phenomenon' ? ((8 + f.size * 0.22) * (f.shape?.altura ?? 1) + 4) * (['nevoa', 'magia', 'terremoto'].includes(skinOf(f)) ? 0.45 : 1)
+        : { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1, ruins: 4 }[f.type];
     return new THREE.Vector3(x, heightAt(x, z) + up, z);
 }
 function labelHtml(f) {
@@ -1004,7 +1376,7 @@ const selMat = new THREE.LineBasicMaterial({ color: 0x8a2d1c, depthTest: false }
 const draftMat = new THREE.PointsMaterial({ color: 0x8a2d1c, size: 7, sizeAttenuation: false, depthTest: false });
 
 function lift(x, z, dy = 0.7) { return new THREE.Vector3(x, heightAt(x, z) + dy, z); }
-const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1, ocean: 1.02, island: 1.02 };
+const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1, ocean: 1.02, island: 1.02, tower: 1.25, ruins: 1.05, phenomenon: 1 };
 
 function updateSelection() {
     selGroup.clear();
@@ -1026,7 +1398,7 @@ function updateSelection() {
     selGroup.add(obj);
     if (EDIT && tool === 'select' && !LINHA.has(f.type)) {
         const al = alcas(f);
-        const pts = al.filter((a) => a.k !== 'giro').map((a) => lift(a.x, a.z, 1));
+        const pts = al.filter((a) => a.k !== 'giro' && f.type !== 'tower').map((a) => lift(a.x, a.z, 1));
         const g1 = new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), alcaMat);
         const g2 = new THREE.Points(new THREE.BufferGeometry().setFromPoints([lift(al[4].x, al[4].z, 1)]), giroMat);
         const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([lift(al[3].x, al[3].z, 1), lift(al[4].x, al[4].z, 1)]), selMat);
@@ -1054,6 +1426,7 @@ function alcaEm(e) {
     const r = canvas.getBoundingClientRect();
     let melhor = null, dm = 13;
     for (const a of alcas(f)) {
+        if (f.type === 'tower' && a.k !== 'giro') continue;
         const v = lift(a.x, a.z, 1).project(camera);
         const sx = (v.x * 0.5 + 0.5) * r.width + r.left, sy = (-v.y * 0.5 + 0.5) * r.height + r.top;
         const d = Math.hypot(sx - e.clientX, sy - e.clientY);
@@ -1252,7 +1625,7 @@ function lugarEm(p) {
     let best = null, bestScore = 1;
     for (const f of features) {
         const rc = reach(f, p.x, p.z);
-        const s = rc - (f.type === 'city' || f.type === 'village' ? 0.35 : 0) + (f.type === 'ocean' ? 0.5 : 0);
+        const s = rc - (f.type === 'city' || f.type === 'village' || f.type === 'ruins' ? 0.35 : 0) - (f.type === 'tower' ? 0.6 : 0) + (f.type === 'ocean' ? 0.5 : 0) + (f.type === 'phenomenon' ? 0.4 : 0);
         if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
     }
     return best;
@@ -1296,7 +1669,7 @@ async function aumentar(f, k, avisar = false) {
     }
     const u = await atualizarLugar(f, { size: Number(novo.toFixed(2)) }, { rotulo: (k > 1 ? 'aumentar ' : 'diminuir ') + nomeDe(f) });
     select(u.id);
-    if (avisar) toast(`${u.name} ficou maior. Para criar outro, clique fora dele.`);
+    if (avisar) toast(`${nomeDe(u)} ficou maior. Para criar outro, clique fora dele.`);
 }
 
 async function excluirLugar(f) {
@@ -1742,8 +2115,8 @@ function formaHtml(f) {
             <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o traçado</button>
             ${f.shape ? '<button type="button" class="link" data-act="forma-padrao">Voltar ao formato padrão</button>' : ''}</div>`;
     }
-    const extra = (['mountain', 'island'].includes(f.type) ? faixa('altura', 'Altura', 0.2, 3, 0.05, s.altura ?? 1) : '')
-        + (['forest', 'city', 'village'].includes(f.type) ? faixa('densidade', f.type === 'forest' ? 'Densidade das árvores' : 'Quantidade de casas', 0.2, 3, 0.05, s.densidade ?? 1) : '');
+    const extra = (['mountain', 'island', 'tower', 'phenomenon'].includes(f.type) ? faixa('altura', f.type === 'phenomenon' ? 'Altura das nuvens e da névoa' : 'Altura', 0.2, 3, 0.05, s.altura ?? 1) : '')
+        + (['forest', 'city', 'village', 'ruins', 'phenomenon'].includes(f.type) ? faixa('densidade', { forest: 'Densidade das árvores', ruins: 'Quantidade de destroços', phenomenon: 'Intensidade' }[f.type] || 'Quantidade de casas', 0.2, 3, 0.05, s.densidade ?? 1) : '');
     return `<h3>Formato</h3>
         ${extra}
         ${faixa('esticar', 'Proporção (largo ↔ comprido)', 0.2, 5, 0.05, s.esticar ?? 1)}

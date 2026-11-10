@@ -8,7 +8,7 @@ namespace App\Support;
  */
 final class Aparencia
 {
-    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road'];
+    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road', 'tower', 'ruins', 'phenomenon'];
 
     /** Tipos desenhados como linha (pontos): rios e estradas. */
     public const LINHAS = ['river', 'road'];
@@ -35,6 +35,9 @@ final class Aparencia
         'ocean' => ['mar', 'tropical', 'tempestuoso', 'gelado', 'abissal'],
         'island' => ['verde', 'areia', 'tropical', 'vulcanica', 'gelo'],
         'road' => ['terra', 'pedra', 'trilha', 'real'],
+        'tower' => ['vigia', 'mago', 'farol', 'sombria', 'elfica'],
+        'ruins' => ['castelo', 'templo', 'pedras', 'cidade', 'arcana'],
+        'phenomenon' => ['nevoa', 'chuva', 'tempestade', 'terremoto', 'nevasca', 'magia'],
     ];
 
     public const COR = '/^#[0-9a-fA-F]{6}$/';
