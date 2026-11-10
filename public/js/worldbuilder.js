@@ -2101,14 +2101,24 @@ function resize() {
 }
 new ResizeObserver(resize).observe(stage);
 
-const clock = new THREE.Clock();
+// Água e lava ficam paradas (sem animação) e o mapa só é redesenhado quando algo muda:
+// câmera, mouse/teclado/painel ou uma resposta do servidor. Parado, não gasta GPU.
+let desenharAte = 0;
+function pedirDesenho(ms = 1200) { desenharAte = Math.max(desenharAte, performance.now() + ms); }
+for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown', 'keyup', 'input', 'change', 'click', 'touchmove']) {
+    window.addEventListener(ev, () => pedirDesenho(), { passive: true, capture: true });
+}
+const fetchOriginal = window.fetch.bind(window);
+window.fetch = (...a) => fetchOriginal(...a).finally(() => pedirDesenho());
+new ResizeObserver(() => pedirDesenho(300)).observe(stage);
 function animate() {
     requestAnimationFrame(animate);
-    uniforms.uTime.value = clock.getElapsedTime();
-    controls.update();
+    if (controls.update()) pedirDesenho(300);
+    if (performance.now() > desenharAte) return;
     renderer.render(scene, camera);
     updateLabels();
 }
+pedirDesenho(3000);
 
 (async function init() {
     setTool('select');
