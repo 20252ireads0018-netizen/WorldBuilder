@@ -111,7 +111,7 @@ class PlanosTest extends TestCase
 
         $cidade = $this->postJson("/api/worlds/{$w->id}/features", ['type' => 'city', 'name' => 'C', 'x' => 150, 'z' => 150, 'size' => 8])->json();
         $this->putJson("/api/features/{$cidade['id']}", ['shape' => ['esticar' => 2.5, 'giro' => 90]])->assertOk()->assertJsonPath('shape.giro', 90);
-        $this->putJson("/api/features/{$cidade['id']}", ['shape' => ['esticar' => 5]])->assertStatus(422);
+        $this->putJson("/api/features/{$cidade['id']}", ['shape' => ['esticar' => 11]])->assertStatus(422);
         $this->putJson("/api/features/{$cidade['id']}", ['shape' => null])->assertOk()->assertJsonPath('shape', null);
 
         // Encolher com lugares fora do novo tamanho é recusado

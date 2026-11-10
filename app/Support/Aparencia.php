@@ -136,7 +136,7 @@ final class Aparencia
             'points.*' => 'array|size:2',
             'points.*.*' => "numeric|between:-$meia,$meia",
             'shape' => ($parcial ? 'sometimes|' : '') . 'nullable|array',
-            'shape.esticar' => 'nullable|numeric|between:0.3,3',
+            'shape.esticar' => 'nullable|numeric|between:0.1,10',
             'shape.giro' => 'nullable|numeric|between:0,360',
             'shape.irregular' => 'nullable|numeric|between:0,1',
             'shape.curvas' => 'nullable|numeric|between:0,1',

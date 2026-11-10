@@ -512,7 +512,7 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
     // Rótulos
     if (opt.nomes) {
         for (const f of lugares) {
-            if (f.shape?.semNome) continue;
+            if (f.shape?.semNome || !f.name) continue;
             if (!visivel(f.x, f.z) && !(f.points && f.points.some(([x, z]) => visivel(x, z)))) continue;
             let x = X(f.x), y = Y(f.z), ang = 0;
             const T = f.type;
@@ -935,7 +935,7 @@ function mostrarInfo(f, sx, sy) {
     const n = f.npcs?.length || 0, lojas = f.shops?.length || 0;
     box.innerHTML = `<button type="button" class="x" title="Fechar">×</button>
         <p class="kind">${esc(C.TYPES[f.type]?.label || '')} · ${esc(C.SKINS[f.type]?.[C.skinOf(f)] || '')}</p>
-        <h3>${esc(f.name)}</h3>
+        <h3>${esc(C.nomeDe ? C.nomeDe(f) : f.name)}</h3>
         ${f.description ? `<p>${esc(f.description)}</p>` : ''}
         ${n || lojas ? `<p class="mut">${n ? n + (n > 1 ? ' NPCs' : ' NPC') : ''}${n && lojas ? ' · ' : ''}${lojas ? lojas + (lojas > 1 ? ' lojas' : ' loja') : ''}</p>` : ''}`;
     box.hidden = false;

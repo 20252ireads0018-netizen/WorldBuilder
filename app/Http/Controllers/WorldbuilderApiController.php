@@ -277,13 +277,14 @@ class WorldbuilderApiController extends Controller
 
         $data = $request->validate([
             'type' => 'required|in:' . implode(',', Aparencia::TIPOS),
-            'name' => 'required|string|max:80',
+            'name' => 'nullable|string|max:80',
             'description' => 'nullable|string|max:2000',
             'skin' => ['nullable', Rule::in(Aparencia::SKINS[$request->input('type')] ?? [])],
             'color' => ['nullable', 'regex:' . Aparencia::COR],
             'secret' => 'nullable|boolean',
         ] + Aparencia::regrasLugar((int) $world->dimension));
         $data['shape'] = Aparencia::formato($data['shape'] ?? null);
+        $data['name'] = trim((string) ($data['name'] ?? '')); // lugar sem nome é permitido
 
         $linha = in_array($data['type'], Aparencia::LINHAS, true);
         if ($linha && count($data['points'] ?? []) < 2) {
@@ -307,13 +308,16 @@ class WorldbuilderApiController extends Controller
         $this->exigirEditorDoLocal($feature);
 
         $data = $request->validate([
-            'name' => 'sometimes|required|string|max:80',
+            'name' => 'sometimes|nullable|string|max:80',
             'description' => 'sometimes|nullable|string|max:2000',
             'skin' => ['sometimes', 'nullable', Rule::in(Aparencia::SKINS[$feature->type] ?? [])],
             'color' => ['sometimes', 'nullable', 'regex:' . Aparencia::COR],
             'secret' => 'sometimes|boolean',
             'type' => ['sometimes', 'required', Rule::in(Aparencia::trocasDe($feature->type))],
         ] + Aparencia::regrasLugar((int) $feature->world->dimension, true));
+        if (array_key_exists('name', $data)) {
+            $data['name'] = trim((string) $data['name']);
+        }
         $tipo = $data['type'] ?? $feature->type;
         if (isset($data['points']) && ! in_array($tipo, Aparencia::LINHAS, true)) {
             unset($data['points']);

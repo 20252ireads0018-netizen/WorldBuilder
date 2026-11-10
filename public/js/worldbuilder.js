@@ -45,7 +45,7 @@ function tamanhoMax(type) {
 }
 const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
 const HINTS = {
-    select:   'Clique num lugar para abri-lo; botão direito num lugar abre o menu rápido (excluir, aumentar, mover...). Arraste para girar, role para aproximar.',
+    select:   'Clique num lugar para abri-lo e arraste-o para mover. As bolinhas na borda esticam só para aquele lado e a vermelha gira (Shift: giro livre). Botão direito abre o menu rápido.',
     mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
     lake:     'Clique no mapa para abrir um lago. Clique de novo dentro dele para aumentar.',
     river:    'Clique para marcar o curso do rio e aperte Enter para concluir.',
@@ -194,6 +194,8 @@ function distSeg(px, pz, a, b) {
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (a[0] + t * dx), pz - (a[1] + t * dz));
 }
+// Nome para mostrar em listas e menus (lugares podem ficar sem nome)
+function nomeDe(f) { return f?.name || (TYPES[f?.type]?.label || 'Lugar') + ' sem nome'; }
 /* ---------- Formato dos lugares: proporção, giro, contorno irregular e curvas dos rios ---------- */
 const IRREG_PADRAO = { ocean: 0.45, lake: 0.12, forest: 0.25, mountain: 0.1, city: 0, village: 0 };
 function forma(f) {
@@ -959,13 +961,13 @@ function labelHtml(f) {
     if (s) bits.push(s + (s > 1 ? ' lojas' : ' loja'));
     if (i) bits.push(i + (i > 1 ? ' itens' : ' item'));
     if (f.secret) bits.push('secreto');
-    return esc(f.name) + (bits.length ? `<small>${bits.join(', ')}</small>` : '');
+    return (f.name ? esc(f.name) : `<i>${esc(nomeDe(f))}</i>`) + (bits.length ? `<small>${bits.join(', ')}</small>` : '');
 }
 function syncLabels() {
     labelsEl.innerHTML = '';
     labels.clear();
     for (const f of features) {
-        if (f.shape?.semNome && f.id !== selectedId) continue;
+        if ((f.shape?.semNome || !f.name) && f.id !== selectedId) continue;
         const a = anchor(f);
         if (!visivelAgora(a.x, a.z)) continue;
         const el = document.createElement('div');
@@ -976,6 +978,8 @@ function syncLabels() {
     }
 }
 function markSelectedLabel() {
+    // Lugares sem nome (ou com o nome escondido) só mostram rótulo enquanto estão selecionados
+    if (features.some((f) => f.shape?.semNome || !f.name)) { syncLabels(); return; }
     labels.forEach(({ el, f }) => el.classList.toggle('sel', f.id === selectedId));
 }
 const tmp = new THREE.Vector3();
@@ -1020,6 +1024,71 @@ function updateSelection() {
     }
     obj.renderOrder = 10;
     selGroup.add(obj);
+    if (EDIT && tool === 'select' && !LINHA.has(f.type)) {
+        const al = alcas(f);
+        const pts = al.filter((a) => a.k !== 'giro').map((a) => lift(a.x, a.z, 1));
+        const g1 = new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), alcaMat);
+        const g2 = new THREE.Points(new THREE.BufferGeometry().setFromPoints([lift(al[4].x, al[4].z, 1)]), giroMat);
+        const ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([lift(al[3].x, al[3].z, 1), lift(al[4].x, al[4].z, 1)]), selMat);
+        for (const o of [ln, g1, g2]) { o.renderOrder = 11; selGroup.add(o); }
+    }
+}
+// Alças do lugar selecionado: quatro lados (esticar só para aquele lado) e uma de girar
+function circuloTex(fundo, borda) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const x = cv.getContext('2d');
+    x.beginPath(); x.arc(32, 32, 26, 0, Math.PI * 2); x.fillStyle = fundo; x.fill();
+    x.lineWidth = 7; x.strokeStyle = borda; x.stroke();
+    return new THREE.CanvasTexture(cv);
+}
+const alcaMat = new THREE.PointsMaterial({ map: circuloTex('#f6ecd2', '#8a2d1c'), size: 15, sizeAttenuation: false, depthTest: false, transparent: true, alphaTest: 0.2 });
+const giroMat = new THREE.PointsMaterial({ map: circuloTex('#8a2d1c', '#f6ecd2'), size: 15, sizeAttenuation: false, depthTest: false, transparent: true, alphaTest: 0.2 });
+function alcas(f) {
+    const F = forma(f), R = f.size * RAIO[f.type];
+    const em = (u, v, k) => { const [x, z] = paraMundo(f, u, v, F); return { x, z, k }; };
+    return [em(R, 0, 'u+'), em(-R, 0, 'u-'), em(0, R, 'v+'), em(0, -R, 'v-'), em(0, -R * 1.45 - 3, 'giro')];
+}
+function alcaEm(e) {
+    const f = sel();
+    if (!f || !EDIT || tool !== 'select' || LINHA.has(f.type)) return null;
+    const r = canvas.getBoundingClientRect();
+    let melhor = null, dm = 13;
+    for (const a of alcas(f)) {
+        const v = lift(a.x, a.z, 1).project(camera);
+        const sx = (v.x * 0.5 + 0.5) * r.width + r.left, sy = (-v.y * 0.5 + 0.5) * r.height + r.top;
+        const d = Math.hypot(sx - e.clientX, sy - e.clientY);
+        if (d < dm) { dm = d; melhor = a; }
+    }
+    return melhor ? { f, k: melhor.k } : null;
+}
+// Recalcula centro, tamanho, proporção e giro enquanto a alça é puxada (o lado oposto fica parado)
+function puxarAlca(al, p, fino) {
+    const f = al.f, a0 = al.antes, F = forma({ ...f, ...a0 }), RA = RAIO[f.type];
+    const sh = { ...(a0.shape || {}) };
+    if (al.k === 'giro') {
+        let g = (Math.atan2(p.x - a0.x, -(p.z - a0.z)) * 180) / Math.PI;
+        if (!fino) g = Math.round(g / 15) * 15;
+        sh.giro = Math.round(((g % 360) + 360) % 360);
+        f.shape = sh;
+        return;
+    }
+    const eixoU = al.k[0] === 'u', sg = al.k[1] === '+' ? 1 : -1;
+    const dir = eixoU ? [F.c, F.s] : [-F.s, F.c];
+    let A = RA * a0.size * F.sx, B = RA * a0.size * F.sz; // meias larguras visuais em u e v
+    const meio = eixoU ? A : B, outro = eixoU ? B : A;
+    const ex = a0.x - sg * meio * dir[0], ez = a0.z - sg * meio * dir[1]; // borda que fica parada
+    const L = Math.max(2, sg * ((p.x - ex) * dir[0] + (p.z - ez) * dir[1]));
+    let novo = L / 2;
+    const maxTam = Math.max(60, HALF);
+    // limites: proporção entre 0,1 e 10 e tamanho dentro do permitido
+    novo = Math.min(novo, outro * 10, (maxTam * RA) ** 2 / outro);
+    novo = Math.max(novo, outro / 10, RA * RA / outro);
+    if (eixoU) A = novo; else B = novo;
+    f.size = Math.round((Math.sqrt(A * B) / RA) * 100) / 100;
+    const e = A / B;
+    if (Math.abs(e - 1) < 0.02) delete sh.esticar; else sh.esticar = Math.round(e * 1000) / 1000;
+    f.shape = Object.keys(sh).length ? sh : null;
+    f.x = noMapa(ex + sg * novo * dir[0]); f.z = noMapa(ez + sg * novo * dir[1]);
 }
 
 const draftGroup = new THREE.Group();
@@ -1052,6 +1121,7 @@ function setTool(t) {
     finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : 'Concluir rio';
     if (t === 'fog' && tab !== 'nevoa') { tab = 'nevoa'; renderPanel(); }
     canvas.style.cursor = t === 'select' ? 'grab' : 'crosshair';
+    updateSelection();
 }
 document.querySelectorAll('.tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
 
@@ -1069,7 +1139,7 @@ function reach(f, x, z) {
     return distN(f, x, z) / RAIO[f.type];
 }
 
-let down = null, ultimoDown = null, arrasto = null, pintando = null, arrastoT = 0;
+let down = null, ultimoDown = null, arrasto = null, pintando = null, arrastoT = 0, puxando = null;
 const noMapa = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
 canvas.addEventListener('pointerdown', (e) => {
     down = ultimoDown = { x: e.clientX, y: e.clientY };
@@ -1083,6 +1153,13 @@ canvas.addEventListener('pointerdown', (e) => {
         pincelar(p);
         return;
     }
+    // Alças do selecionado: esticar para um lado ou girar
+    const al = alcaEm(e);
+    if (al) {
+        puxando = { ...al, antes: { x: al.f.x, z: al.f.z, size: al.f.size, shape: clonar(al.f.shape ?? null) }, moveu: false };
+        controls.enabled = false;
+        return;
+    }
     // Arrastar o lugar já selecionado leva ele junto
     const f = tool === 'select' ? lugarEm(p) : null;
     if (f && f.id === selectedId) {
@@ -1093,7 +1170,20 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 canvas.addEventListener('pointermove', (e) => {
     if (pintando) { const p = pick(e); if (p) pincelar(p); return; }
-    if (!arrasto) return;
+    if (puxando) {
+        const p = pick(e);
+        if (!p) return;
+        puxando.moveu = true;
+        puxarAlca(puxando, p, e.shiftKey);
+        const agora = performance.now();
+        if (agora - arrastoT > 140) { arrastoT = agora; rebuildAll(); }
+        else { syncLabels(); updateSelection(); }
+        return;
+    }
+    if (!arrasto) {
+        if (EDIT && !down) canvas.style.cursor = alcaEm(e) ? 'pointer' : '';
+        return;
+    }
     const p = pick(e);
     if (!p) return;
     const dx = p.x - arrasto.p0.x, dz = p.z - arrasto.p0.z;
@@ -1113,6 +1203,19 @@ canvas.addEventListener('pointerup', async (e) => {
         await salvarNevoa(pin.antes, pin.v ? 'revelar área' : 'cobrir área');
         return;
     }
+    if (puxando) {
+        const a = puxando; puxando = null;
+        controls.enabled = true; down = null;
+        if (!a.moveu) return;
+        const f = a.f, depois = { x: f.x, z: f.z, size: f.size, shape: clonar(f.shape ?? null) };
+        rebuildAll();
+        try {
+            const u = await api('PUT', `${API}/features/${f.id}`, depois);
+            replaceFeature(u, { rebuild: false });
+            registrarMudanca(f.id, a.antes, depois, (a.k === 'giro' ? 'girar ' : 'esticar ') + nomeDe(f));
+        } catch { Object.assign(f, a.antes); rebuildAll(); }
+        return;
+    }
     if (arrasto) {
         const a = arrasto; arrasto = null;
         controls.enabled = true; canvas.style.cursor = 'grab';
@@ -1124,7 +1227,7 @@ canvas.addEventListener('pointerup', async (e) => {
             try {
                 const u = await api('PUT', `${API}/features/${f.id}`, depois);
                 replaceFeature(u, { rebuild: false });
-                registrarMudanca(f.id, antes, depois, 'mover ' + f.name);
+                registrarMudanca(f.id, antes, depois, 'mover ' + nomeDe(f));
             } catch { Object.assign(f, antes); rebuildAll(); }
             return;
         }
@@ -1191,20 +1294,20 @@ async function aumentar(f, k, avisar = false) {
         toast(k > 1 ? `${TYPES[f.type].label} já está no tamanho máximo deste mapa.` : `${TYPES[f.type].label} já está no tamanho mínimo.`);
         return;
     }
-    const u = await atualizarLugar(f, { size: Number(novo.toFixed(2)) }, { rotulo: (k > 1 ? 'aumentar ' : 'diminuir ') + f.name });
+    const u = await atualizarLugar(f, { size: Number(novo.toFixed(2)) }, { rotulo: (k > 1 ? 'aumentar ' : 'diminuir ') + nomeDe(f) });
     select(u.id);
     if (avisar) toast(`${u.name} ficou maior. Para criar outro, clique fora dele.`);
 }
 
 async function excluirLugar(f) {
     const filhos = f.npcs.length + f.shops.length + f.loose_items.length;
-    if (filhos && !confirm(`Excluir "${f.name}" com ${filhos} ${filhos === 1 ? 'NPC, loja ou item' : 'NPCs, lojas e itens'}?`)) return;
+    if (filhos && !confirm(`Excluir "${nomeDe(f)}" com ${filhos} ${filhos === 1 ? 'NPC, loja ou item' : 'NPCs, lojas e itens'}?`)) return;
     const r = await api('DELETE', `${API}/features/${f.id}`);
     const copia = r.restaurar, id0 = f.id;
     tirarLugar(f.id);
-    toast(`${f.name} foi excluído. Ctrl+Z desfaz.`);
+    toast(`${nomeDe(f)} foi excluído. Ctrl+Z desfaz.`);
     registrar({
-        rotulo: 'excluir ' + f.name,
+        rotulo: 'excluir ' + nomeDe(f),
         desfazer: async () => { await recriarLugar(copia, rid(id0)); },
         refazer: async () => { const g = lugarPorId(id0); if (g) { await api('DELETE', `${API}/features/${g.id}`); tirarLugar(g.id); } },
     });
@@ -1228,7 +1331,7 @@ function registrarCriacao(f) {
     const id0 = f.id;
     let copia = null;
     registrar({
-        rotulo: 'criar ' + f.name,
+        rotulo: 'criar ' + nomeDe(f),
         desfazer: async () => { const g = lugarPorId(id0); if (!g) return; copia = (await api('DELETE', `${API}/features/${g.id}`)).restaurar; tirarLugar(g.id); },
         refazer: async () => { if (copia) await recriarLugar(copia, rid(id0)); },
     });
@@ -1239,7 +1342,7 @@ async function duplicarLugar(f) {
     const cl = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const extra = { skin: f.skin, color: f.color, shape: f.shape, secret: f.secret, size: f.size, description: f.description };
     if (LINHA.has(f.type)) extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
-    const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name + ' (cópia)', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
+    const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name ? f.name + ' (cópia)' : '', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
     features.push(novo);
     rebuildAll();
     select(novo.id);
@@ -1274,7 +1377,7 @@ function abrirMenu(p, e, forcado = null) {
         ['-'],
         ['excluir', `Excluir ${T.label.toLowerCase()}`],
     ];
-    menuEl.innerHTML = `<p class="ctx-titulo"><span>${esc(T.label)}</span>${esc(f.name)}</p>` + itens.map(([k, l]) => k === '-'
+    menuEl.innerHTML = `<p class="ctx-titulo"><span>${esc(T.label)}</span>${esc(nomeDe(f))}</p>` + itens.map(([k, l]) => k === '-'
         ? '<hr>'
         : `<button type="button" role="menuitem" data-m="${k}"${k === 'excluir' ? ' class="perigo"' : ''}>${l}</button>`).join('');
     menuEl.hidden = false;
@@ -1294,7 +1397,7 @@ menuEl.addEventListener('click', async (e) => {
     const m = b.dataset.m;
     if (m === 'modelos') {
         // segunda tela do menu: os modelos do tipo, com a cor de cada um
-        menuEl.innerHTML = `<p class="ctx-titulo"><span>Modelo</span>${esc(f.name)}</p>`
+        menuEl.innerHTML = `<p class="ctx-titulo"><span>Modelo</span>${esc(nomeDe(f))}</p>`
             + Object.entries(SKINS[f.type]).map(([k, l]) => `<button type="button" role="menuitem" data-m="skin:${k}" class="${skinOf(f) === k ? 'atual' : ''}"><i class="bolinha" style="background:${corDaSkin(f, k)}"></i>${esc(l)}</button>`).join('')
             + '<hr><button type="button" role="menuitem" data-m="voltar">← Voltar</button>';
         menuEl.querySelector('button').focus();
@@ -1302,13 +1405,13 @@ menuEl.addEventListener('click', async (e) => {
     }
     if (m === 'voltar') { const r = menuEl.getBoundingClientRect(), s = stage.getBoundingClientRect(); abrirMenu({ x: f.x, z: f.z }, { clientX: r.left, clientY: r.top }, f); return; }
     fecharMenu();
-    if (m.startsWith('skin:')) { await atualizarLugar(f, { skin: m.slice(5) }, { rotulo: 'modelo de ' + f.name }); return; }
-    if (m.startsWith('tipo:')) { await atualizarLugar(f, { type: m.slice(5) }, { rotulo: 'tipo de ' + f.name }); toast(`${f.name} agora é ${TYPES[m.slice(5)].label.toLowerCase()}.`); return; }
+    if (m.startsWith('skin:')) { await atualizarLugar(f, { skin: m.slice(5) }, { rotulo: 'modelo de ' + nomeDe(f) }); return; }
+    if (m.startsWith('tipo:')) { await atualizarLugar(f, { type: m.slice(5) }, { rotulo: 'tipo de ' + nomeDe(f) }); toast(`${nomeDe(f)} agora é ${TYPES[m.slice(5)].label.toLowerCase()}.`); return; }
     switch (m) {
         case 'abrir': tab = 'lugar'; select(f.id); break;
         case 'renomear': {
-            const nome = prompt('Novo nome:', f.name);
-            if (nome && nome.trim() && nome.trim() !== f.name) await atualizarLugar(f, { name: nome.trim().slice(0, 80) }, { rebuild: false, rotulo: 'renomear ' + f.name });
+            const nome = prompt('Novo nome (deixe vazio para ficar sem nome):', f.name);
+            if (nome !== null && nome.trim() !== f.name) await atualizarLugar(f, { name: nome.trim().slice(0, 80) }, { rebuild: false, rotulo: 'renomear ' + nomeDe(f) });
             break;
         }
         case 'maior': await aumentar(f, 1.25); break;
@@ -1316,7 +1419,7 @@ menuEl.addEventListener('click', async (e) => {
         case 'mover': select(f.id); setTool('move'); break;
         case 'curso': select(f.id); setTool('redraw'); break;
         case 'duplicar': await duplicarLugar(f); break;
-        case 'segredo': await atualizarLugar(f, { secret: !f.secret }, { rebuild: false, rotulo: 'segredo de ' + f.name }); break;
+        case 'segredo': await atualizarLugar(f, { secret: !f.secret }, { rebuild: false, rotulo: 'segredo de ' + nomeDe(f) }); break;
         case 'excluir': await excluirLugar(f); break;
     }
 });
@@ -1332,7 +1435,7 @@ canvas.addEventListener('wheel', fecharMenu, { passive: true });
 async function createFeature(type, x, z, extra = {}) {
     const t = TYPES[type];
     const size = type === 'ocean' ? Math.round(HALF * 0.45) : t.size[2];
-    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: t.fresh, x, z, size, ...extra });
+    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: '', x, z, size, ...extra });
     features.push(f);
     rebuildAll();
     select(f.id);
@@ -1346,7 +1449,7 @@ async function finishRiver() {
     if (tool === 'redraw') {
         const f = sel();
         setTool('select');
-        if (f) await atualizarLugar(f, { points: pts, x: pts[0][0], z: pts[0][1] }, { rotulo: 'traçado de ' + f.name });
+        if (f) await atualizarLugar(f, { points: pts, x: pts[0][0], z: pts[0][1] }, { rotulo: 'traçado de ' + nomeDe(f) });
         return;
     }
     await createFeature(tool, pts[0][0], pts[0][1], { points: pts });
@@ -1362,7 +1465,7 @@ async function moveSelected(p) {
         body.points = f.points.map(([x, z]) => [clamp(x + dx), clamp(z + dz)]);
         body.x = body.points[0][0]; body.z = body.points[0][1];
     }
-    await atualizarLugar(f, body, { rotulo: 'mover ' + f.name });
+    await atualizarLugar(f, body, { rotulo: 'mover ' + nomeDe(f) });
 }
 finishBtn.addEventListener('click', finishRiver);
 document.addEventListener('keydown', (e) => {
@@ -1400,7 +1503,7 @@ async function atualizarLugar(f, corpo, { rebuild = true, render = true, rotulo 
     for (const k of Object.keys(corpo)) antes[k] = clonar(f[k] ?? null);
     const u = await api('PUT', `${API}/features/${f.id}`, corpo);
     replaceFeature(u, { rebuild, render });
-    registrarMudanca(f.id, antes, corpo, rotulo || 'mudança em ' + u.name);
+    registrarMudanca(f.id, antes, corpo, rotulo || 'mudança em ' + nomeDe(u));
     return u;
 }
 async function desfazer() {
@@ -1566,7 +1669,7 @@ function listaLugares() {
         const fs = features.filter((f) => f.type === t);
         if (!fs.length) return '';
         return `<h3>${PLURAL[t]} <small>${fs.length}</small></h3><ul class="list lugares">${fs.map((f) =>
-            `<li><button type="button" class="link" data-act="ir" data-id="${f.id}">${esc(f.name)}</button>${f.secret ? '<span class="mut">secreto</span>' : ''}</li>`).join('')}</ul>`;
+            `<li><button type="button" class="link" data-act="ir" data-id="${f.id}">${esc(nomeDe(f))}</button>${f.secret ? '<span class="mut">secreto</span>' : ''}</li>`).join('')}</ul>`;
     }).join('');
     return grupos || '<p class="mut">Nenhum lugar no mapa ainda.</p>';
 }
@@ -1643,7 +1746,7 @@ function formaHtml(f) {
         + (['forest', 'city', 'village'].includes(f.type) ? faixa('densidade', f.type === 'forest' ? 'Densidade das árvores' : 'Quantidade de casas', 0.2, 3, 0.05, s.densidade ?? 1) : '');
     return `<h3>Formato</h3>
         ${extra}
-        ${faixa('esticar', 'Proporção (largo ↔ comprido)', 0.3, 3, 0.05, s.esticar ?? 1)}
+        ${faixa('esticar', 'Proporção (largo ↔ comprido)', 0.2, 5, 0.05, s.esticar ?? 1)}
         ${faixa('giro', 'Direção (graus)', 0, 360, 5, s.giro ?? 0)}
         ${faixa('irregular', 'Contorno irregular', 0, 1, 0.05, Math.round(F.irr * 100) / 100)}
         ${f.shape ? '<p><button type="button" class="link" data-act="forma-padrao">Voltar ao formato padrão</button></p>' : ''}`;
@@ -1735,7 +1838,7 @@ function lugarEditor(f) {
                 <p class="kind">${T.label}</p>
                 ${trocas.length > 1 ? `<div class="chips tipo-troca">${trocas.map((t) => `<button type="button" class="chip-btn ${t === f.type ? 'on' : ''}" data-act="tipo" data-k="${t}">${TYPES[t].label}</button>`).join('')}</div>` : ''}
             </div>
-            <label>Nome <input data-field="name" value="${esc(f.name)}" maxlength="80"></label>
+            <label>Nome <input data-field="name" value="${esc(f.name)}" maxlength="80" placeholder="Sem nome"></label>
             <label>Descrição <textarea data-field="description" rows="3" placeholder="Lendas, clima, história do lugar">${esc(f.description)}</textarea></label>
         </div>
 
@@ -1804,7 +1907,7 @@ function lugarLeitura(f) {
         <ul class="list">${s.items.map(itemLi).join('') || '<li class="mut">Prateleiras vazias.</li>'}</ul></li>`).join('');
     return `<div class="head">
             <p class="kind">${T.label} · ${esc(SKINS[f.type][skinOf(f)])}</p>
-            <h2>${esc(f.name)}</h2>
+            <h2>${esc(nomeDe(f))}</h2>
             ${f.description ? `<p class="desc">${esc(f.description)}</p>` : '<p class="mut">Sem história registrada.</p>'}
         </div>
         ${f.npcs.length ? `<h3>NPCs <small>${f.npcs.length}</small></h3><ul class="list">${npcs}</ul>` : ''}
@@ -1865,7 +1968,7 @@ panel.addEventListener('change', async (e) => {
         if (!f) return;
         const v = t.type === 'checkbox' ? (t.checked ? 1 : 0) : Number(t.value);
         const shape = { ...(f.shape || {}), [t.dataset.shape]: v };
-        try { await atualizarLugar(f, { shape }, { rotulo: 'formato de ' + f.name }); } catch { renderPanel(); }
+        try { await atualizarLugar(f, { shape }, { rotulo: 'formato de ' + nomeDe(f) }); } catch { renderPanel(); }
         return;
     }
     if (t.dataset.dimensao !== undefined) {
@@ -1901,7 +2004,7 @@ panel.addEventListener('change', async (e) => {
     if (field === 'skin') valor = t.value || null;
     try {
         const visual = ['size', 'skin', 'color'].includes(field);
-        await atualizarLugar(f, { [field]: valor }, { rebuild: visual, render: field !== 'name' && field !== 'description', rotulo: ({ name: 'nome', description: 'descrição', size: 'tamanho', color: 'cor', secret: 'segredo', skin: 'modelo' }[field] || field) + ' de ' + f.name });
+        await atualizarLugar(f, { [field]: valor }, { rebuild: visual, render: field !== 'name' && field !== 'description', rotulo: ({ name: 'nome', description: 'descrição', size: 'tamanho', color: 'cor', secret: 'segredo', skin: 'modelo' }[field] || field) + ' de ' + nomeDe(f) });
     } catch { renderPanel(); }
 });
 
@@ -1957,16 +2060,16 @@ panel.addEventListener('click', async (e) => {
             setTool('redraw');
             return;
         case 'forma-padrao':
-            await atualizarLugar(f, { shape: null }, { rotulo: 'formato de ' + f.name });
+            await atualizarLugar(f, { shape: null }, { rotulo: 'formato de ' + nomeDe(f) });
             return;
         case 'skin':
-            await atualizarLugar(f, { skin: btn.dataset.k || null }, { rotulo: 'modelo de ' + f.name });
+            await atualizarLugar(f, { skin: btn.dataset.k || null }, { rotulo: 'modelo de ' + nomeDe(f) });
             return;
         case 'cor':
-            await atualizarLugar(f, { color: btn.dataset.k }, { rotulo: 'cor de ' + f.name });
+            await atualizarLugar(f, { color: btn.dataset.k }, { rotulo: 'cor de ' + nomeDe(f) });
             return;
         case 'tipo':
-            if (btn.dataset.k !== f.type) await atualizarLugar(f, { type: btn.dataset.k }, { rotulo: 'tipo de ' + f.name });
+            if (btn.dataset.k !== f.type) await atualizarLugar(f, { type: btn.dataset.k }, { rotulo: 'tipo de ' + nomeDe(f) });
             return;
         case 'tam-mais': return aumentar(f, 1.15);
         case 'tam-menos': return aumentar(f, 1 / 1.15);
@@ -1988,7 +2091,7 @@ panel.addEventListener('click', async (e) => {
                 else (f.points || []).forEach(([x, z]) => world.fog.areas.push([x, z, f.size * 3 + 3, 1]));
             }
             desenharNevoa();
-            return salvarNevoa(antes, { 'fog-tudo': 'revelar tudo', 'fog-nada': 'cobrir tudo', 'fog-lugar': 'revelar ' + (f?.name || 'lugar') }[act]);
+            return salvarNevoa(antes, { 'fog-tudo': 'revelar tudo', 'fog-nada': 'cobrir tudo', 'fog-lugar': 'revelar ' + nomeDe(f) }[act]);
         }
         case 'planos':
             location.href = world.plano?.url || '/';
@@ -2049,7 +2152,7 @@ function abrirAtlas() {
     if (!window.WBAtlas) { baixarVista3D(); return; }
     window.WBAtlas.abrir({
         world, theme, features, EDIT, SIZE, HALF, TYPES, SKINS,
-        nevoa: world.fog, soJogador: !EDIT,
+        nevoa: world.fog, soJogador: !EDIT, nomeDe,
         sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf,
         comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
         baixar3D: baixarVista3D,
@@ -2072,6 +2175,7 @@ function baixarVista3D() {
         const x = parseFloat(el.style.left) * k, y = parseFloat(el.style.top) * k;
         ctx.lineWidth = 5 * k;
         ctx.strokeStyle = getComputedStyle(stage).getPropertyValue('--rot-halo') || '#e7d3a2';
+        if (!f.name || f.shape?.semNome) return;
         ctx.strokeText(f.name, x, y);
         ctx.fillStyle = cs.color;
         ctx.fillText(f.name, x, y);
@@ -2111,8 +2215,12 @@ for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown',
 const fetchOriginal = window.fetch.bind(window);
 window.fetch = (...a) => fetchOriginal(...a).finally(() => pedirDesenho());
 new ResizeObserver(() => pedirDesenho(300)).observe(stage);
-function animate() {
+let quadroAnterior = 0;
+function animate(t = 0) {
     requestAnimationFrame(animate);
+    // Um recálculo pesado travou a página (quadro atrasado): desenha de novo para mostrar o resultado
+    if (t - quadroAnterior > 250) pedirDesenho(600);
+    quadroAnterior = t;
     if (controls.update()) pedirDesenho(300);
     if (performance.now() > desenharAte) return;
     renderer.render(scene, camera);

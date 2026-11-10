@@ -137,7 +137,7 @@ final class MundoArquivo
         $skin = $f['skin'] ?? null;
         $feature = $world->features()->create([
             'type' => $f['type'],
-            'name' => $f['name'],
+            'name' => trim((string) ($f['name'] ?? '')),
             'description' => $f['description'] ?? null,
             'x' => $f['x'],
             'z' => $f['z'],
@@ -179,7 +179,7 @@ final class MundoArquivo
         $max = Api::MAX_FILHOS;
         $r = [
             $p . 'type' => 'required|in:' . implode(',', Aparencia::TIPOS),
-            $p . 'name' => 'required|string|max:80',
+            $p . 'name' => 'nullable|string|max:80',
             $p . 'description' => 'nullable|string|max:2000',
             $p . 'skin' => 'nullable|string|max:20',
             $p . 'color' => ['nullable', 'regex:' . Aparencia::COR],

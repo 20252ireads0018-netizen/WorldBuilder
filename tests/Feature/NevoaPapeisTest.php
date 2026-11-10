@@ -114,4 +114,17 @@ class NevoaPapeisTest extends TestCase
         // Jogador não restaura nem mexe na névoa
         $this->actingAs($this->jogador)->postJson("/api/worlds/$id/features/restaurar", ['feature' => $copia])->assertNotFound();
     }
+
+    public function test_lugar_sem_nome_e_formato_esticado(): void
+    {
+        $id = $this->mundo->id;
+        $f = $this->postJson("/api/worlds/$id/features", ['type' => 'mountain', 'name' => '', 'x' => 0, 'z' => 0, 'size' => 10])
+            ->assertCreated()->assertJsonPath('name', '')->json();
+        $this->postJson("/api/worlds/$id/features", ['type' => 'lake', 'x' => 5, 'z' => 5, 'size' => 6])->assertCreated();
+        $this->putJson("/api/features/{$f['id']}", ['name' => 'Pico'])->assertOk()->assertJsonPath('name', 'Pico');
+        $this->putJson("/api/features/{$f['id']}", ['name' => ''])->assertOk()->assertJsonPath('name', '');
+        $this->putJson("/api/features/{$f['id']}", ['x' => 8, 'size' => 20, 'shape' => ['esticar' => 6.5, 'giro' => 90]])
+            ->assertOk()->assertJsonPath('shape.esticar', 6.5)->assertJsonPath('size', 20);
+        $this->putJson("/api/features/{$f['id']}", ['shape' => ['esticar' => 12]])->assertStatus(422);
+    }
 }
