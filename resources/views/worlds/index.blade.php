@@ -7,8 +7,8 @@
 <div class="wb wb-pagina">
 <div class="shelf">
     <header class="shelf-head">
-        <h1>Worldbuilder</h1>
-        <p>Desenhe o mapa do seu mundo em 3D e povoe cada lugar com NPCs, lojas e itens.</p>
+        <h1>Seus mundos</h1>
+        <p>Desenhe o mapa do seu mundo em 3D, escolha fundo, cores e estilo de cada lugar, e convide jogadores para ver.</p>
     </header>
 
     @if (session('status'))
@@ -34,18 +34,38 @@
                 <button type="submit">Ver um mundo de exemplo</button>
             </form>
         </div>
+        <details class="importar" @error('arquivo') open @enderror>
+            <summary>Importar um mundo salvo em arquivo</summary>
+            <form method="POST" action="{{ route('worldbuilder.importar') }}" enctype="multipart/form-data" class="linha">
+                @csrf
+                <input type="file" name="arquivo" accept=".json,application/json" required aria-label="Arquivo .json do mundo">
+                <button type="submit">Importar</button>
+            </form>
+            @error('arquivo') <p class="error">{{ $message }}</p> @enderror
+        </details>
     </div>
 
-    <section class="worlds">
+    <section class="worlds" aria-label="Meus mundos">
         @forelse($worlds as $world)
             <article class="card world">
-                <div>
+                <a class="capa" href="{{ route('worldbuilder.show', $world) }}" tabindex="-1" aria-hidden="true">
+                    @if($world->urlCapa())<img src="{{ $world->urlCapa() }}" alt="" loading="lazy">@endif
+                </a>
+                <div class="world-txt">
                     <h2>{{ $world->name }}</h2>
-                    @if($world->description)<p>{{ $world->description }}</p>@endif
-                    <p class="mut">{{ $world->features_count }} {{ $world->features_count === 1 ? 'lugar' : 'lugares' }} no mapa</p>
+                    @if($world->description)<p>{{ Str::limit($world->description, 160) }}</p>@endif
+                    <p class="mut">
+                        {{ $world->features_count }} {{ $world->features_count === 1 ? 'lugar' : 'lugares' }}
+                        · <span class="selo {{ $world->ehPublico() ? 'publico' : '' }}">{{ $world->ehPublico() ? 'Público' : 'Privado' }}</span>
+                        @if($world->players_count) · {{ $world->players_count }} {{ $world->players_count === 1 ? 'jogador' : 'jogadores' }} @endif
+                    </p>
                 </div>
                 <div class="actions">
                     <a class="btn primary" href="{{ route('worldbuilder.show', $world) }}">Abrir mapa</a>
+                    <form method="POST" action="{{ route('worldbuilder.copiar', $world) }}">
+                        @csrf
+                        <button type="submit">Duplicar</button>
+                    </form>
                     <form method="POST" action="{{ route('worldbuilder.destroy', $world) }}"
                           data-confirma="Excluir {{ $world->name }} e tudo o que existe nele?"
                           onsubmit="return confirm(this.dataset.confirma)">
@@ -58,6 +78,28 @@
             <p class="empty">Nenhum mundo ainda. Crie o primeiro acima ou abra o mundo de exemplo.</p>
         @endforelse
     </section>
+
+    @if($compartilhados->isNotEmpty())
+        <h2 class="secao">Compartilhados com você</h2>
+        <section class="worlds" aria-label="Mundos compartilhados com você">
+            @foreach($compartilhados as $world)
+                <article class="card world">
+                    <a class="capa" href="{{ route('worldbuilder.ver', $world) }}" tabindex="-1" aria-hidden="true">
+                        @if($world->urlCapa())<img src="{{ $world->urlCapa() }}" alt="" loading="lazy">@endif
+                    </a>
+                    <div class="world-txt">
+                        <h2>{{ $world->name }}</h2>
+                        <p class="mut">de {{ $world->owner?->name }} · {{ $world->features_count }} {{ $world->features_count === 1 ? 'lugar' : 'lugares' }}</p>
+                    </div>
+                    <div class="actions">
+                        <a class="btn primary" href="{{ route('worldbuilder.ver', $world) }}">Ver mapa</a>
+                    </div>
+                </article>
+            @endforeach
+        </section>
+    @endif
+
+    <p class="rodape-lista"><a href="{{ route('worldbuilder.explorar') }}">Explorar mundos públicos de outras pessoas</a></p>
 </div>
 </div>
 @endsection

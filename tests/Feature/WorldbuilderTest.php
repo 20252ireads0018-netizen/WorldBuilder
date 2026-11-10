@@ -63,7 +63,7 @@ class WorldbuilderTest extends TestCase
         $world = World::firstOrFail();
 
         $dados = $this->actingAs($this->ana)->getJson("/api/worlds/{$world->id}/data")->assertOk()->json();
-        $this->assertCount(12, $dados['features']);
+        $this->assertCount(15, $dados['features']);
         $valdrin = collect($dados['features'])->firstWhere('name', 'Valdrin');
         $this->assertCount(2, $valdrin['npcs']);
         $this->assertCount(2, $valdrin['shops'][0]['items']);

@@ -17,10 +17,14 @@
             <li>Dar nome e história a cada lugar, mudar o tamanho ou apagar.</li>
             <li>Alocar NPCs em qualquer lugar e abrir lojas nas cidades e vilas, com itens, preços e estoque.</li>
             <li>Ligar cada NPC à loja onde trabalha.</li>
+            <li>Escolher o fundo (pergaminho, ilha no oceano, céu noturno, névoa), as cores de terra, lagos e montanhas e o estilo de cada lugar: vulcões, picos nevados, lagos congelados ou de lava, cidades élficas, nórdicas, do deserto e mais.</li>
+            <li>Deixar o mundo público ou convidar jogadores para ver o mapa, com lugares secretos que só você enxerga.</li>
+            <li>Salvar o mundo em arquivo, importar de volta e duplicar.</li>
         </ul>
         <div class="linha">
             <a class="btn primary" href="{{ route('register') }}">Criar conta grátis</a>
             <a class="btn" href="{{ route('login') }}">Já tenho conta</a>
+            <a href="{{ route('worldbuilder.explorar') }}">Explorar mundos públicos</a>
         </div>
     </div>
 </div>

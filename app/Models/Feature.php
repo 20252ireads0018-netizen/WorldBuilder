@@ -6,18 +6,19 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** Local do mapa: montanha, lago, rio, cidade ou vila. */
+/** Local do mapa: montanha, lago, rio, cidade, vila ou floresta (skin e cor próprias são opcionais). */
 class Feature extends Model
 {
     protected $table = 'wb_features';
 
-    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points'];
+    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points', 'skin', 'color', 'secret'];
 
     protected $casts = [
         'points' => 'array',
         'x' => 'float',
         'z' => 'float',
         'size' => 'float',
+        'secret' => 'boolean',
     ];
 
     public function world(): BelongsTo

@@ -16,19 +16,32 @@ Route::middleware('guest')->group(function () {
 });
 Route::post('/sair', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
+// ---------- Aberto a visitantes (cada ação confere se o mundo é público ou se a pessoa foi convidada) ----------
+Route::get('/explorar', [WorldbuilderController::class, 'explorar'])->name('worldbuilder.explorar');
+Route::get('/mundos/{world}/ver', [WorldbuilderController::class, 'ver'])->whereNumber('world')->name('worldbuilder.ver');
+Route::get('/mundos/{world}/capa', [WorldbuilderController::class, 'capa'])->whereNumber('world')->name('worldbuilder.capa');
+Route::get('/api/worlds/{world}/data', [WorldbuilderApiController::class, 'data'])
+    ->whereNumber('world')->middleware('throttle:120,1')->name('api.data');
+
 // ---------- Mundos (exige login) ----------
 Route::middleware('auth')->group(function () {
     Route::prefix('/mundos')->name('worldbuilder.')->group(function () {
         Route::get('/', [WorldbuilderController::class, 'index'])->name('index');
         Route::post('/', [WorldbuilderController::class, 'store'])->middleware('throttle:20,1')->name('store');
         Route::post('/exemplo', [WorldbuilderController::class, 'exemplo'])->middleware('throttle:5,1')->name('exemplo');
+        Route::post('/importar', [WorldbuilderController::class, 'importar'])->middleware('throttle:10,1')->name('importar');
         Route::get('/{world}', [WorldbuilderController::class, 'show'])->whereNumber('world')->name('show');
         Route::delete('/{world}', [WorldbuilderController::class, 'destroy'])->whereNumber('world')->name('destroy');
+        Route::get('/{world}/exportar', [WorldbuilderController::class, 'exportar'])->whereNumber('world')->name('exportar');
+        Route::post('/{world}/copiar', [WorldbuilderController::class, 'copiar'])->whereNumber('world')->middleware('throttle:10,1')->name('copiar');
     });
 
     // API JSON do editor 3D (CSRF pela sessão)
     Route::prefix('/api')->name('api.')->middleware('throttle:240,1')->group(function () {
-        Route::get('/worlds/{world}/data', [WorldbuilderApiController::class, 'data'])->whereNumber('world')->name('data');
+        Route::put('/worlds/{world}', [WorldbuilderApiController::class, 'updateWorld'])->whereNumber('world')->name('worlds.update');
+        Route::post('/worlds/{world}/cover', [WorldbuilderApiController::class, 'storeCover'])->whereNumber('world')->middleware('throttle:20,1')->name('worlds.cover');
+        Route::post('/worlds/{world}/players', [WorldbuilderApiController::class, 'storePlayer'])->whereNumber('world')->middleware('throttle:20,1')->name('players.store');
+        Route::delete('/worlds/{world}/players/{user}', [WorldbuilderApiController::class, 'destroyPlayer'])->whereNumber(['world', 'user'])->name('players.destroy');
         Route::post('/worlds/{world}/features', [WorldbuilderApiController::class, 'storeFeature'])->whereNumber('world')->name('features.store');
         Route::put('/features/{feature}', [WorldbuilderApiController::class, 'updateFeature'])->whereNumber('feature')->name('features.update');
         Route::delete('/features/{feature}', [WorldbuilderApiController::class, 'destroyFeature'])->whereNumber('feature')->name('features.destroy');

@@ -16,6 +16,7 @@
     <div class="wb-topo">
         <a class="wb-marca" href="{{ url('/') }}">Worldbuilder</a>
         <nav class="wb-menu" aria-label="Conta">
+            <a href="{{ route('worldbuilder.explorar') }}">Explorar</a>
             @auth
                 <a href="{{ route('worldbuilder.index') }}">Meus mundos</a>
                 <span class="wb-nome">{{ auth()->user()->name }}</span>

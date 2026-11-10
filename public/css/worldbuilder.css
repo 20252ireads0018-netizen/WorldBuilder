@@ -109,23 +109,26 @@ body.wb-editor { height: 100vh; overflow: hidden; }
 .wb #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .wb .label {
     position: absolute; transform: translate(-50%, -50%);
-    white-space: nowrap; text-align: center; color: var(--ink);
-    text-shadow: 0 0 3px var(--paper), 0 0 7px var(--paper), 0 0 12px var(--paper);
+    white-space: nowrap; text-align: center; color: var(--rot-tinta, var(--ink));
+    text-shadow: 0 0 3px var(--rot-halo, var(--paper)), 0 0 7px var(--rot-halo, var(--paper)), 0 0 12px var(--rot-halo, var(--paper));
 }
-.wb .label small { display: block; font-size: 12px; color: var(--ink-soft); }
+.wb .label small { display: block; font-size: 12px; color: inherit; opacity: .75; }
+.wb .label.secreto { opacity: .7; text-decoration: underline dashed; }
 .wb .label.mountain { font-style: italic; letter-spacing: .08em; font-size: 17px; }
-.wb .label.lake { font-style: italic; letter-spacing: .16em; color: var(--water); font-size: 16px; }
-.wb .label.river { font-style: italic; color: var(--water); font-size: 14px; }
+.wb .label.lake { font-style: italic; letter-spacing: .16em; color: var(--rot-agua, var(--water)); font-size: 16px; }
+.wb .label.river { font-style: italic; color: var(--rot-agua, var(--water)); font-size: 14px; }
+.wb .label.forest { font-style: italic; font-size: 15px; letter-spacing: .05em; }
 .wb .label.city { font-size: 21px; letter-spacing: .03em; }
 .wb .label.village { font-size: 15px; }
-.wb .label.sel { color: var(--seal); }
+.wb .label.sel { color: var(--rot-sel, var(--seal)); }
 
-.wb #title {
-    position: absolute; top: 14px; left: 16px;
-    font-size: 24px; font-style: italic; color: var(--paper);
-    text-shadow: 0 1px 4px #000;
-    pointer-events: none;
-}
+.wb #topo { position: absolute; top: 12px; left: 16px; pointer-events: none; }
+.wb #title { font-size: 24px; font-style: italic; color: var(--paper); text-shadow: 0 1px 4px #000; }
+.wb .status { font-size: 14px; color: #f3ead2; text-shadow: 0 1px 3px #000; }
+.wb .status.erro { color: #ffb4a0; }
+.wb #acoes { position: absolute; top: 12px; right: 14px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.wb #acoes form { margin: 0; }
+.wb #acoes button:not(.primary), .wb #acoes .btn:not(.primary) { background: var(--paper); }
 .wb #hint {
     position: absolute; left: 14px; bottom: 14px; max-width: min(560px, calc(100% - 28px));
     background: var(--paper); border: 1px solid #8a6b3a;
@@ -133,7 +136,7 @@ body.wb-editor { height: 100vh; overflow: hidden; }
     display: flex; gap: 12px; align-items: center;
 }
 .wb #toast {
-    position: absolute; top: 14px; right: 14px; max-width: 320px;
+    position: absolute; top: 58px; right: 14px; max-width: 320px;
     background: var(--seal); color: #f6e7c4; padding: 8px 12px; font-size: 15px;
     opacity: 0; pointer-events: none; transition: opacity .2s;
 }
@@ -151,10 +154,39 @@ body.wb-editor { height: 100vh; overflow: hidden; }
 .wb #panel h3 small { font-size: 14px; color: var(--ink-soft); font-weight: normal; }
 .wb #panel .kind { color: var(--seal); font-style: italic; font-size: 16px; }
 .wb #panel .help p { margin-top: 10px; }
+.wb #panel .tab-body > h3:first-child { margin-top: 4px; border-top: 0; padding-top: 0; }
+.wb .tabs { display: flex; gap: 2px; margin: -6px -6px 16px; border-bottom: 1px solid var(--ink-soft); flex-wrap: wrap; }
+.wb .tabs button { border: 0; border-bottom: 3px solid transparent; padding: 6px 10px; font-size: 16px; color: var(--ink-soft); }
+.wb .tabs button.on { color: var(--ink); border-bottom-color: var(--seal); background: none; }
+.wb button.link { border: 0; padding: 0; color: var(--seal); text-decoration: underline; font-size: inherit; text-align: left; }
+.wb button.link:hover { background: none; color: var(--ink); }
+.wb .nota { font-size: 14px; margin-top: 8px; }
+.wb .desc { margin-top: 8px; white-space: pre-line; }
+.wb .acoes-mundo { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.wb .acoes-mundo form { margin: 0; }
+.wb .lugares li { padding: 3px 0; align-items: baseline; }
+.wb .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wb label.chip { margin: 0; border: 1px solid var(--ink-soft); padding: 4px 10px; cursor: pointer; color: var(--ink); font-size: 15px; background: rgba(255, 248, 225, .4); }
+.wb label.chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.wb label.chip.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.wb label.chip:focus-within { outline: 2px solid var(--seal); outline-offset: 2px; }
+.wb .temas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.wb .tema { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 6px 8px; font-size: 14px; text-align: left; }
+.wb .amostra { display: flex; width: 100%; height: 14px; border: 1px solid rgba(0,0,0,.25); }
+.wb .amostra i { flex: 1; }
+.wb .cores { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.wb label.cor { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.wb label.cor input[type=color] { width: 44px; height: 30px; padding: 2px; flex-shrink: 0; margin: 0; cursor: pointer; }
+.wb .cor-linha { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wb .cor-linha .cor { flex: 1; min-width: 180px; }
+.wb .skins-padrao label { margin-top: 6px; }
+.wb .copiar { display: flex; gap: 6px; margin-top: 3px; }
+.wb .copiar input { font-size: 14px; }
+.wb .head .linha { margin-top: 12px; }
 .wb .range { display: flex; gap: 10px; align-items: center; }
 .wb .range input { padding: 0; }
 .wb .range output { min-width: 34px; text-align: right; color: var(--ink); }
-.wb .head .danger { margin-top: 14px; }
+
 .wb .list { list-style: none; margin: 0; padding: 0; }
 .wb .list > li {
     display: flex; justify-content: space-between; gap: 8px; align-items: flex-start;
@@ -202,6 +234,35 @@ body.wb > main { flex: 1; }
 .wb .wb-lista li { margin-top: 4px; }
 .wb label.wb-check { display: flex; gap: 8px; align-items: center; }
 .wb label.wb-check input { width: auto; margin: 0; }
+
+.wb .secao { color: var(--paper); font-size: 26px; font-style: italic; margin: 34px 0 14px; }
+.wb .rodape-lista { margin-top: 26px; }
+.wb .rodape-lista a, .wb .paginacao a { color: #e0c98f; }
+.wb details.importar { margin-top: 14px; }
+.wb details.importar summary { cursor: pointer; color: var(--ink-soft); }
+.wb details.importar input[type=file] { width: auto; flex: 1; min-width: 200px; }
+.wb .world .capa { width: 132px; height: 82px; flex-shrink: 0; background: var(--walnut-2); border: 1px solid #8a6b3a; overflow: hidden; display: block; }
+.wb .capa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.wb .world-txt { flex: 1; min-width: 0; }
+.wb .selo { border: 1px solid var(--ink-soft); padding: 0 6px; font-size: 13px; }
+.wb .selo.publico { border-color: var(--seal); color: var(--seal); }
+.wb .shelf--larga { max-width: 1100px; }
+.wb .busca { display: flex; gap: 8px; margin-bottom: 20px; }
+.wb .busca input { background: var(--paper); }
+.wb .busca button { background: var(--paper); }
+.wb .galeria { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }
+.wb .galeria .empty { grid-column: 1 / -1; }
+.wb a.mundo-pub { display: flex; flex-direction: column; padding: 0; margin: 0; text-decoration: none; color: var(--ink); }
+.wb a.mundo-pub:hover { box-shadow: 0 0 0 4px var(--seal) inset; }
+.wb .mundo-pub .capa { aspect-ratio: 16 / 10; background: var(--walnut-2); display: block; }
+.wb .mundo-pub-txt { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px 16px; }
+.wb .mundo-pub-txt strong { font-size: 21px; font-weight: normal; }
+.wb .mundo-pub-txt .mut, .wb .mundo-pub-txt .desc { font-size: 15px; }
+.wb .paginacao { display: flex; gap: 18px; justify-content: center; margin-top: 26px; color: #c9b27c; }
+@media (max-width: 640px) {
+    .wb .world .capa { width: 100%; height: 140px; }
+    .wb .temas, .wb .cores { grid-template-columns: 1fr; }
+}
 
 /* atributo hidden vence o display dos botões */
 .wb [hidden] { display: none !important; }
