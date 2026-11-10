@@ -701,6 +701,7 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
     };
     ctx.restore(); // clip do mapa
 
+    L.rotulos = []; L.legenda = null;
     // Rótulos: cada nome procura um lugar livre perto do seu ponto (sem cobrir outros nomes nem os desenhos principais)
     if (opt.nomes) {
         const rotulos = [], obstaculos = [];
@@ -721,7 +722,7 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
             switch (T) {
                 case 'city': case 'village': {
                     const F = C.forma(f);
-                    let fundo = 0;
+                    let fundo = -Infinity;
                     for (let i = 0; i < 48; i++) {
                         const a = (i / 48) * PI2, b = f.size * 0.95 * C.borda(F, a);
                         fundo = Math.max(fundo, C.paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F)[1]);
@@ -766,9 +767,15 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                 }
                 default: continue;
             }
-            rotulos.push({ f, x, y, ang, fonte, cor, esp, T, nome: T === 'region' ? f.name.toUpperCase() : f.name });
+            const [ax, ay] = T === 'river' || T === 'road' ? [x, y + 8] : T === 'region' || T === 'biome' ? [x, y] : [X(f.x), Y(f.z)];
+            rotulos.push({ f, x, y, ax, ay, ang, fonte, cor, esp, T, nome: T === 'region' ? f.name.toUpperCase() : f.name });
         }
-        posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo: P.halo });
+        // legenda e rosa-dos-ventos ficam por cima do mapa: nenhum nome vai para baixo delas
+        const fixos = [];
+        if (opt.legenda) fixos.push(L.legenda = caixaLegenda(lugares, mx, my, S, X, Y));
+        if (opt.rosa) fixos.push([mx + S - 70 - 58, my + S - 76 - 58, 116, 116]);
+        if (opt.escala) fixos.push([mx + 20, my + S - 44, 220, 30]);
+        L.rotulos = posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo: P.halo, tinta: P.tinta, fixos });
     }
 
     // Moldura, título, rosa-dos-ventos, escala e legenda
@@ -784,7 +791,7 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
     if (opt.titulo) cartela(ctx, L, P, opt.tituloTexto || C.world.name, opt.subtitulo);
     if (opt.rosa) rosa(ctx, mx + S - 70, my + S - 76, 52, P);
     if (opt.escala) barraEscala(ctx, mx + 26, my + S - 30, u, C.SIZE, P);
-    if (opt.legenda) legenda(ctx, mx + S - 16, my + 16, lugares, P, C);
+    if (opt.legenda) { const cl = L.legenda || caixaLegenda(lugares, mx, my, S, X, Y); legenda(ctx, cl[0] + cl[2], cl[1], lugares, P, C); }
 
     // Textura do papel e manchas
     ctx.globalCompositeOperation = 'multiply';
@@ -833,10 +840,20 @@ function floco(ctx, x, y, s) {
     ctx.stroke();
 }
 
+// Posições em volta do ponto (grade de meia largura x meia altura do nome), da mais perto para a mais longe
+function gradePassos(w, h) {
+    const out = [];
+    for (let i = -3; i <= 3; i++) for (let j = -4; j <= 4; j++) {
+        const dx = i * (w * 0.5 + 4), dy = j * h * 0.9;
+        if (Math.hypot(dx, dy) <= Math.max(w * 1.6, h * 4)) out.push([dx, dy]);
+    }
+    // abaixo do ponto vem primeiro em caso de empate (como nos mapas impressos)
+    return out.sort((p, q) => Math.hypot(p[0], p[1] * 1.15 - (p[1] > 0 ? 2 : 0)) - Math.hypot(q[0], q[1] * 1.15 - (q[1] > 0 ? 2 : 0)));
+}
 // Ordem de importância: quem vem antes escolhe o lugar primeiro
 const PRIORIDADE = { city: 0, region: 1, biome: 2, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
-function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
-    const ocupados = [];
+function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo, tinta, fixos = [] }) {
+    const ocupados = [...fixos], postos = [];
     const bate = (r, lista) => lista.reduce((t, o) => {
         const ix = Math.min(r[0] + r[2], o[0] + o[2]) - Math.max(r[0], o[0]), iy = Math.min(r[1] + r[3], o[1] + o[3]) - Math.max(r[1], o[1]);
         return t + (ix > 0 && iy > 0 ? ix * iy : 0);
@@ -845,7 +862,7 @@ function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
     for (const r of rotulos) {
         const tam0 = parseFloat(r.fonte.match(/(\d+(?:\.\d+)?)px/)[1]);
         let melhor = null;
-        for (const escala of [1, 0.86, 0.74, 0.64]) {
+        for (const escala of [1, 0.86, 0.74, 0.64, 0.55, 0.48]) {
             const tam = Math.round(tam0 * escala * 10) / 10, fonte = r.fonte.replace(/\d+(?:\.\d+)?px/, tam + 'px');
             ctx.font = fonte;
             const esp = r.esp * escala;
@@ -862,25 +879,45 @@ function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
             const w = Math.max(...linhas.map(largura)) + 6, lh = tam * 1.12, h = lh * linhas.length + 2;
             const bw = r.ang ? Math.abs(w * Math.cos(r.ang)) + Math.abs(h * Math.sin(r.ang)) : w, bh = r.ang ? Math.abs(w * Math.sin(r.ang)) + Math.abs(h * Math.cos(r.ang)) : h;
             const passos = r.ang ? [[0, 0], [0, -h], [0, h], [bw * 0.5, 0], [-bw * 0.5, 0]]
-                : [[0, 0], [0, h * 0.9], [0, -h * 0.9], [0, h * 1.8], [0, -h * 1.8], [w * 0.55, 0], [-w * 0.55, 0], [w * 0.55, h], [-w * 0.55, h], [w * 0.55, -h], [-w * 0.55, -h], [0, h * 2.7], [0, -h * 2.7], [w * 0.8, h * 1.8], [-w * 0.8, h * 1.8], [w * 0.8, -h * 1.8], [-w * 0.8, -h * 1.8], [0, h * 3.6], [0, -h * 3.6]];
+                : gradePassos(w, h);
             for (const [dx, dy] of passos) {
                 let x = r.x + dx, y = r.y + dy;
                 x = clamp(x, mx + bw / 2 + 4, mx + S - bw / 2 - 4); y = clamp(y, my + bh / 2 + 4, my + S - bh / 2 - 4);
                 const caixa = [x - bw / 2 - 3, y - bh / 2 - 2, bw + 6, bh + 4];
                 const sobre = bate(caixa, ocupados), cobre = bate(caixa, obstaculos);
-                const custo = sobre * 4 + cobre + Math.hypot(dx, dy) * 0.6 + (1 - escala) * 400;
+                // perto do lugar vale mais que tamanho cheio: num mapa cheio o nome encolhe um pouco antes de se afastar
+                const custo = sobre * 4 + Math.min(cobre * 0.12, 60) + Math.hypot(dx, dy) * 1.6 + (1 - escala) * 28;
                 const achou = sobre === 0 && cobre === 0;
-                if (!melhor || achou || custo < melhor.custo) melhor = { custo, x, y, fonte, esp, linhas, lh, caixa, livre: sobre === 0, achou };
-                if (achou) break; // primeiro lugar totalmente livre, o mais perto do ponto
+                const cand = { custo, x, y, fonte, esp, linhas, lh, caixa, livre: sobre === 0, achou };
+                if (!melhor || (cand.livre && !melhor.livre) || (cand.livre === melhor.livre && custo < melhor.custo)) melhor = cand;
             }
-            if (melhor.achou) break;
         }
         // sem espaço livre o nome não é desenhado por cima de outro (cidades, regiões e mares ficam no melhor lugar achado)
         if (!melhor.livre && !['city', 'region', 'ocean'].includes(r.T)) continue;
         ocupados.push(melhor.caixa);
+        // nome que precisou sair do lugar ganha uma linha-guia até o ponto a que pertence
+        const [bx, by, bw2, bh2] = melhor.caixa;
+        const px = clamp(r.ax, bx, bx + bw2), py = clamp(r.ay, by, by + bh2);
+        const longe = Math.hypot(r.ax - px, r.ay - py);
+        const guia = Math.hypot(melhor.x - r.x, melhor.y - r.y) > 4 && longe > 7 ? [px, py] : null;
+        postos.push({ r, melhor, guia, caixa: melhor.caixa, f: r.f, ax: r.ax, ay: r.ay });
+    }
+    // primeiro as linhas-guia (por baixo), depois os nomes
+    ctx.save();
+    for (const p of postos) {
+        if (!p.guia) continue;
+        ctx.strokeStyle = tinta; ctx.globalAlpha = 0.55; ctx.lineWidth = 0.9; ctx.setLineDash([3, 2]);
+        ctx.beginPath(); ctx.moveTo(p.guia[0], p.guia[1]); ctx.lineTo(p.ax, p.ay); ctx.stroke();
+        ctx.setLineDash([]); ctx.globalAlpha = 0.85; ctx.fillStyle = tinta;
+        ctx.beginPath(); ctx.arc(p.ax, p.ay, 2.2, 0, PI2); ctx.fill();
+        ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(p.ax, p.ay, 1, 0, PI2); ctx.fill();
+    }
+    ctx.restore();
+    for (const { r, melhor } of postos) {
         const lw = r.T === 'city' || r.T === 'region' ? 5 : 4.2;
         melhor.linhas.forEach((s, i) => texto(ctx, s, melhor.x, melhor.y + (i - (melhor.linhas.length - 1) / 2) * melhor.lh, melhor.fonte, r.cor, halo, melhor.esp, r.ang, lw));
     }
+    return postos.map(({ f, caixa, ax, ay }) => ({ f, caixa, ax, ay }));
 }
 
 function texto(ctx, s, x, y, fonte, cor, halo, esp, ang, lw) {
@@ -999,6 +1036,18 @@ function barraEscala(ctx, x, y, u, size, P) {
     ctx.restore();
 }
 
+// Canto da legenda: o que cobre menos lugares (em cima à direita, em cima à esquerda ou embaixo à esquerda)
+function caixaLegenda(lugares, mx, my, S, X, Y) {
+    const n = new Set(lugares.map((l) => l.type)).size, w = 150, h = 26 + n * 22;
+    const cantos = [[mx + S - 16 - w, my + 16], [mx + 16, my + 16], [mx + 16, my + S - 56 - h]];
+    let melhor = null;
+    cantos.forEach(([x, y], i) => {
+        const dentro = lugares.filter((l) => { const px = X(l.x), py = Y(l.z); return px > x - 20 && px < x + w + 20 && py > y - 20 && py < y + h + 20; }).length;
+        const nota = dentro * 10 + i; // empate: mantém a ordem preferida
+        if (!melhor || nota < melhor.nota) melhor = { nota, caixa: [x, y, w, h] };
+    });
+    return melhor.caixa;
+}
 function legenda(ctx, xd, y, lugares, P, C) {
     const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno', region: 'Região', biome: 'Bioma' };
     const tipos = Object.keys(NOMES).filter((t) => lugares.some((l) => l.type === t));
@@ -1193,7 +1242,8 @@ function contornoLugar(ctx, f) {
     const { mx, my, S } = L, X = (x) => mx + ((x + C.HALF) / C.SIZE) * S, Y = (z) => my + ((z + C.HALF) / C.SIZE) * S;
     ctx.save(); ctx.strokeStyle = '#9b2f1d'; ctx.lineWidth = 2.4 / view.z; ctx.setLineDash([6 / view.z, 4 / view.z]);
     ctx.beginPath();
-    if (f.type === 'river') C.rioPath(f).forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z))));
+    if (f.type === 'river' || f.type === 'road') C.rioPath(f).forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z))));
+    else if ((f.type === 'region' || f.type === 'biome') && f.points?.length) { f.points.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z)))); ctx.closePath(); }
     else {
         const F = C.forma(f);
         for (let i = 0; i <= 80; i++) {
@@ -1201,7 +1251,16 @@ function contornoLugar(ctx, f) {
             i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z));
         }
     }
-    ctx.stroke(); ctx.restore();
+    ctx.stroke();
+    const r = (L.rotulos || []).find((q) => q.f === f);
+    if (r) {
+        const [x, y, w, h] = r.caixa, cx = clamp(r.ax, x, x + w), cy = clamp(r.ay, y, y + h);
+        ctx.setLineDash([]); ctx.lineWidth = 1.6 / view.z;
+        ctx.strokeRect(x, y, w, h);
+        if (Math.hypot(r.ax - cx, r.ay - cy) > 3) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(r.ax, r.ay); ctx.stroke(); }
+        ctx.fillStyle = '#9b2f1d'; ctx.beginPath(); ctx.arc(r.ax, r.ay, 3.5 / view.z, 0, PI2); ctx.fill();
+    }
+    ctx.restore();
 }
 
 function ajustar() {
@@ -1218,6 +1277,10 @@ function zoomEm(sx, sy, k) {
 function lugarEm(sx, sy) {
     if (!L) return null;
     const px = (sx - view.x) / view.z, py = (sy - view.y) / view.z;
+    for (const r of L.rotulos || []) {
+        const [x, y, w, h] = r.caixa;
+        if (px >= x && px <= x + w && py >= y && py <= y + h) return r.f;
+    }
     const x = ((px - L.mx) / L.S) * C.SIZE - C.HALF, z = ((py - L.my) / L.S) * C.SIZE - C.HALF;
     if (Math.abs(x) > C.HALF || Math.abs(z) > C.HALF) return null;
     let melhor = null, nota = 1;
