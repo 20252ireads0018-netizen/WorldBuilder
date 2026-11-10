@@ -22,9 +22,10 @@ class World extends Model
     protected $casts = [
         'theme' => 'array',
         'cover_version' => 'integer',
+        'dimension' => 'integer',
     ];
 
-    protected $attributes = ['visibility' => 'private'];
+    protected $attributes = ['visibility' => 'private', 'dimension' => 200];
 
     protected static function booted(): void
     {
@@ -64,6 +65,12 @@ class World extends Model
         }
 
         return $u !== null && $this->players()->whereKey($u->id)->exists();
+    }
+
+    /** Metade do lado do mapa: as coordenadas vão de -meia a +meia. */
+    public function meia(): int
+    {
+        return intdiv((int) ($this->dimension ?: 200), 2);
     }
 
     public function tema(): array

@@ -31,6 +31,14 @@
                 <label>Descrição
                     <textarea name="description" rows="2" maxlength="1000" placeholder="Em poucas linhas, como é esse mundo?">{{ old('description') }}</textarea>
                 </label>
+                @php($limites = auth()->user()->limites())
+                <label>Tamanho do mapa
+                    <select name="dimension">
+                        @foreach (config('planos.dimensoes') as $d => $nome)
+                            <option value="{{ $d }}" @selected((int) old('dimension', 200) === $d)>{{ $nome }} ({{ $d }} × {{ $d }}){{ $d > $limites['dimensao'] ? ' · plano Cartógrafo' : '' }}</option>
+                        @endforeach
+                    </select>
+                </label>
                 @error('name') <p class="error">{{ $message }}</p> @enderror
             </form>
             <div class="linha">
@@ -54,7 +62,11 @@
 
     <div class="secao-topo">
         <h2 class="secao">Meus mapas</h2>
-        @if($worlds->isNotEmpty())<span class="contagem">{{ $worlds->count() }} {{ $worlds->count() === 1 ? 'mundo' : 'mundos' }}</span>@endif
+        @if (auth()->user()->temPlanoPago())
+            @if($worlds->isNotEmpty())<span class="contagem">{{ $worlds->count() }} {{ $worlds->count() === 1 ? 'mundo' : 'mundos' }}</span>@endif
+        @else
+            <span class="contagem">{{ $worlds->count() }} de {{ $limites['mundos'] }} no plano grátis · <a href="{{ route('planos') }}">ver planos</a></span>
+        @endif
     </div>
     <section class="worlds" aria-label="Meus mundos">
         @forelse($worlds as $world)

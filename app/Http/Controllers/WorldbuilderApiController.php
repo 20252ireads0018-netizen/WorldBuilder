@@ -79,10 +79,18 @@ class WorldbuilderApiController extends Controller
     private function mundoJson(World $world, bool $dono): array
     {
         $out = $world->only('id', 'name', 'description', 'visibility');
+        $out['dimension'] = (int) ($world->dimension ?: 200);
         $out['theme'] = $world->tema();
         $out['owner'] = $world->owner?->name;
         $out['cover'] = $world->urlCapa();
         if ($dono) {
+            $lim = $world->owner?->limites() ?? config('planos.limites.gratis');
+            $out['plano'] = [
+                'pago' => (bool) $world->owner?->temPlanoPago(),
+                'dimensao_max' => $lim['dimensao'],
+                'dimensoes' => config('planos.dimensoes'),
+                'url' => route('planos'),
+            ];
             $out['players'] = $world->players()->orderBy('name')->get(['users.id', 'name', 'email'])
                 ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->values();
         }
@@ -100,7 +108,26 @@ class WorldbuilderApiController extends Controller
             'name' => 'sometimes|required|string|max:80',
             'description' => 'sometimes|nullable|string|max:1000',
             'visibility' => 'sometimes|required|in:private,public',
+            'dimension' => ['sometimes', 'required', 'integer', Rule::in(array_keys(config('planos.dimensoes')))],
         ] + Aparencia::regras());
+
+        if (isset($data['dimension']) && (int) $data['dimension'] !== (int) $world->dimension) {
+            $user = $request->user();
+            if ($data['dimension'] > $user->limites()['dimensao']) {
+                return response()->json([
+                    'message' => 'Mapas maiores que ' . $user->limites()['dimensao'] . ' fazem parte do plano Cartógrafo.',
+                    'redirect' => route('planos', ['motivo' => 'dimensao']),
+                ], 402);
+            }
+            // Encolher não pode deixar lugares fora do mapa
+            $meia = intdiv((int) $data['dimension'], 2);
+            $fora = $world->features()->where(fn ($q) => $q->where('x', '<', -$meia)->orWhere('x', '>', $meia)
+                ->orWhere('z', '<', -$meia)->orWhere('z', '>', $meia))->count();
+            if ($fora) {
+                abort(422, "$fora " . ($fora === 1 ? 'lugar ficaria' : 'lugares ficariam') . ' fora do mapa nesse tamanho. Mova ou exclua antes de encolher.');
+            }
+            $world->dimension = (int) $data['dimension'];
+        }
 
         $world->fill(array_intersect_key($data, array_flip(['name', 'description'])));
         if (isset($data['visibility'])) {
@@ -173,16 +200,11 @@ class WorldbuilderApiController extends Controller
             'type' => 'required|in:' . implode(',', Aparencia::TIPOS),
             'name' => 'required|string|max:80',
             'description' => 'nullable|string|max:2000',
-            'x' => 'required|numeric|between:-100,100',
-            'z' => 'required|numeric|between:-100,100',
-            'size' => 'required|numeric|between:1,60',
-            'points' => 'nullable|array|max:200',
-            'points.*' => 'array|size:2',
-            'points.*.*' => 'numeric|between:-100,100',
             'skin' => ['nullable', Rule::in(Aparencia::SKINS[$request->input('type')] ?? [])],
             'color' => ['nullable', 'regex:' . Aparencia::COR],
             'secret' => 'nullable|boolean',
-        ]);
+        ] + Aparencia::regrasLugar((int) $world->dimension));
+        $data['shape'] = Aparencia::formato($data['shape'] ?? null);
 
         if ($data['type'] === 'river' && count($data['points'] ?? []) < 2) {
             abort(422, 'Um rio precisa de pelo menos dois pontos.');
@@ -207,18 +229,15 @@ class WorldbuilderApiController extends Controller
         $data = $request->validate([
             'name' => 'sometimes|required|string|max:80',
             'description' => 'sometimes|nullable|string|max:2000',
-            'size' => 'sometimes|required|numeric|between:1,60',
-            'x' => 'sometimes|required|numeric|between:-100,100',
-            'z' => 'sometimes|required|numeric|between:-100,100',
             'skin' => ['sometimes', 'nullable', Rule::in(Aparencia::SKINS[$feature->type] ?? [])],
             'color' => ['sometimes', 'nullable', 'regex:' . Aparencia::COR],
             'secret' => 'sometimes|boolean',
-            'points' => 'sometimes|array|min:2|max:200',
-            'points.*' => 'array|size:2',
-            'points.*.*' => 'numeric|between:-100,100',
-        ]);
+        ] + Aparencia::regrasLugar((int) $feature->world->dimension, true));
         if (isset($data['points']) && $feature->type !== 'river') {
             unset($data['points']);
+        }
+        if (array_key_exists('shape', $data)) {
+            $data['shape'] = Aparencia::formato($data['shape']);
         }
         if (isset($data['color'])) {
             $data['color'] = strtolower($data['color']);

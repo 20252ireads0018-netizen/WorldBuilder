@@ -9,7 +9,16 @@ const EDIT = root.dataset.mode === 'edit';
 const URLS = { ver: root.dataset.urlVer, exportar: root.dataset.urlExportar, copiar: root.dataset.urlCopiar };
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
-const SIZE = 200, HALF = SIZE / 2, SEG = 220;
+let SIZE = 200, HALF = 100, SEG = 220, K = 1; // lado do mapa (muda por mundo); K = escala em relação ao mapa padrão de 200
+function setDimensao(d) {
+    SIZE = d || 200; HALF = SIZE / 2; K = SIZE / 200;
+    SEG = Math.round(Math.min(420, SIZE * 1.1));
+    uniforms.uHalf.value = HALF;
+    controls.maxDistance = 330 * K;
+    camera.far = 1500 * K;
+    camera.updateProjectionMatrix();
+    stars.scale.setScalar(K);
+}
 
 /* ---------- Catálogo ---------- */
 const TYPES = {
@@ -17,10 +26,17 @@ const TYPES = {
     lake:     { label: 'Lago',     fresh: 'Lago sem nome',     size: [4, 40, 12, 1],     sizeLabel: 'Raio',     corLabel: 'Cor da água' },
     river:    { label: 'Rio',      fresh: 'Rio sem nome',      size: [1.5, 6, 2.5, 0.1], sizeLabel: 'Largura',  corLabel: 'Cor da água' },
     forest:   { label: 'Floresta', fresh: 'Floresta sem nome', size: [4, 35, 12, 1],     sizeLabel: 'Extensão', corLabel: 'Cor das copas' },
-    city:     { label: 'Cidade',   fresh: 'Cidade sem nome',   size: [3, 14, 7, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
-    village:  { label: 'Vila',     fresh: 'Vila sem nome',     size: [2, 6, 3.5, 0.5],   sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
+    city:     { label: 'Cidade',   fresh: 'Cidade sem nome',   size: [3, 24, 7, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
+    village:  { label: 'Vila',     fresh: 'Vila sem nome',     size: [2, 10, 3.5, 0.5],  sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
+    ocean:    { label: 'Oceano',   fresh: 'Mar sem nome',      size: [20, 100, 55, 1],   sizeLabel: 'Extensão', corLabel: 'Cor do mar' },
 };
-const PLURAL = { mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
+// Tamanho máximo cresce com o mapa
+function tamanhoMax(type) {
+    const base = TYPES[type].size[1];
+    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03 }[type];
+    return Math.max(base, Math.round(Math.max(60, HALF) * k));
+}
+const PLURAL = { ocean: 'Oceanos e mares', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
 const HINTS = {
     select:   'Clique num lugar para abri-lo. Arraste para girar, role para aproximar, botão direito para mover a câmera.',
     mountain: 'Clique no mapa para erguer uma montanha.',
@@ -29,6 +45,8 @@ const HINTS = {
     forest:   'Clique no mapa para plantar uma floresta.',
     city:     'Clique no mapa para fundar uma cidade.',
     village:  'Clique no mapa para fundar uma vila.',
+    ocean:    'Clique no mapa para abrir um oceano. Montanhas dentro dele viram ilhas.',
+    redraw:   'Clique para marcar o novo curso do rio e aperte Enter (ou Concluir) para trocar. Esc cancela.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
 };
 const VIEW_HINT = 'Clique num lugar para ver a história dele. Arraste para girar, role para aproximar.';
@@ -40,6 +58,7 @@ const SKINS = {
     lake: AGUA, river: AGUA,
     forest: { carvalhos: 'Carvalhos', pinheiros: 'Pinheiros', outono: 'Outono', morta: 'Mata morta', magica: 'Mágica' },
     city: POVOADO, village: POVOADO,
+    ocean: { mar: 'Mar aberto', tropical: 'Tropical', tempestuoso: 'Tempestuoso', gelado: 'Gelado', abissal: 'Abissal' },
 };
 // Cor própria de cada skin (null = cor do tema: montanha ou água)
 const SKIN_COR = {
@@ -47,10 +66,11 @@ const SKIN_COR = {
     lake: { calma: null, cristalina: null, congelada: '#cfe6ef', pantano: '#5d6b3a', lava: '#e2561c' },
     forest: { carvalhos: '#4f7a3a', pinheiros: '#2f5a3a', outono: '#c86a28', morta: '#6a5a48', magica: '#3fc6b0' },
     city: { medieval: '#9a4a2c', elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
+    ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
 };
 SKIN_COR.river = SKIN_COR.lake;
 SKIN_COR.village = SKIN_COR.city;
-const WS = { calma: 0, cristalina: 1, congelada: 2, pantano: 3, lava: 4 };
+const WS = { calma: 0, cristalina: 1, congelada: 2, pantano: 3, lava: 4, mar: 5, tropical: 1, tempestuoso: 5, gelado: 2, abissal: 5 };
 
 const FUNDOS = { pergaminho: 'Pergaminho', oceano: 'Ilha no oceano', noite: 'Céu noturno', nevoa: 'Névoa', cor: 'Cor sólida' };
 const ESTILOS = { pergaminho: 'Pergaminho', natural: 'Natural', ilustrado: 'Ilustrado' };
@@ -82,6 +102,7 @@ function corOf(f) {
     if (c) return c;
     if (f.type === 'mountain') return theme.cores.montanha;
     if (f.type === 'lake' || f.type === 'river') return theme.cores.agua;
+    if (f.type === 'ocean') return '#' + new THREE.Color(theme.cores.agua).multiplyScalar(0.72).getHexString();
     return '#888888';
 }
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
@@ -104,6 +125,11 @@ async function api(method, url, body) {
             body: body ? JSON.stringify(body) : undefined,
         });
         const json = await res.json().catch(() => ({}));
+        if (res.status === 402 && json.redirect) {
+            toast(json.message || 'Isso faz parte do plano Cartógrafo.');
+            setTimeout(() => { location.href = json.redirect; }, 1400);
+            throw new Error('HTTP 402');
+        }
         if (!res.ok) {
             const msg = json.errors ? Object.values(json.errors)[0][0] : json.message;
             toast(msg && res.status === 422 ? msg : 'Não foi possível salvar. Confira os campos e tente de novo.');
@@ -139,8 +165,74 @@ function distSeg(px, pz, a, b) {
     t = Math.max(0, Math.min(1, t));
     return Math.hypot(px - (a[0] + t * dx), pz - (a[1] + t * dz));
 }
+/* ---------- Formato dos lugares: proporção, giro, contorno irregular e curvas dos rios ---------- */
+const IRREG_PADRAO = { ocean: 0.45, lake: 0.12, forest: 0.25, mountain: 0.1, city: 0, village: 0 };
+function forma(f) {
+    const s = f.shape || {}, e = s.esticar ?? 1, g = ((s.giro ?? 0) * Math.PI) / 180;
+    return { sx: Math.sqrt(e), sz: 1 / Math.sqrt(e), c: Math.cos(g), s: Math.sin(g), irr: s.irregular ?? IRREG_PADRAO[f.type] ?? 0, seed: (f.id || 1) * 0.6180339 };
+}
+// Coordenadas locais do lugar: sem esticar nem girar, igual a dx/dz
+function local(f, x, z, F = forma(f)) {
+    const dx = x - f.x, dz = z - f.z;
+    return [(dx * F.c + dz * F.s) / F.sx, (-dx * F.s + dz * F.c) / F.sz];
+}
+function paraMundo(f, u, v, F = forma(f)) {
+    const U = u * F.sx, V = v * F.sz;
+    return [f.x + U * F.c - V * F.s, f.z + U * F.s + V * F.c];
+}
+// Raio relativo da borda num ângulo (1 = círculo perfeito)
+function borda(F, ang) {
+    if (!F.irr) return 1;
+    const k = F.seed * 10;
+    const n = Math.sin(ang * 2 + k) * 0.5 + Math.sin(ang * 3 + k * 1.7) * 0.3 + Math.sin(ang * 5 + k * 2.3) * 0.2 + Math.sin(ang * 9 + k * 3.1) * 0.12;
+    return Math.max(0.35, 1 + F.irr * 0.45 * n);
+}
+// Distância normalizada: < 1 dentro do lugar, 1 na borda
+function distN(f, x, z, F = forma(f)) {
+    const [u, v] = local(f, x, z, F);
+    return Math.hypot(u, v) / (f.size * borda(F, Math.atan2(v, u)));
+}
+// Ponto aleatório dentro da área do lugar (entre d0 e d1 da borda)
+function pontoDentro(f, r, F, d0 = 0, d1 = 1) {
+    const a = r() * Math.PI * 2, d = (d0 + Math.sqrt(r()) * (d1 - d0)) * f.size * borda(F, a);
+    return paraMundo(f, Math.cos(a) * d, Math.sin(a) * d, F);
+}
+
+// Curso do rio suavizado (Catmull-Rom) e com meandros conforme "curvas"
+const rioCache = new WeakMap();
+function rioPath(f) {
+    const key = JSON.stringify([f.points, f.shape?.curvas, f.size]);
+    const c = rioCache.get(f);
+    if (c && c.key === key) return c.pts;
+    const p = f.points || [], out = [];
+    for (let i = 0; i < p.length - 1; i++) {
+        const p0 = p[Math.max(0, i - 1)], p1 = p[i], p2 = p[i + 1], p3 = p[Math.min(p.length - 1, i + 2)];
+        const n = Math.max(2, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 1.5));
+        for (let j = 0; j < n; j++) {
+            const t = j / n, t2 = t * t, t3 = t2 * t;
+            const cr = (a0, a1, a2, a3) => 0.5 * (2 * a1 + (-a0 + a2) * t + (2 * a0 - 5 * a1 + 4 * a2 - a3) * t2 + (-a0 + 3 * a1 - 3 * a2 + a3) * t3);
+            out.push([cr(p0[0], p1[0], p2[0], p3[0]), cr(p0[1], p1[1], p2[1], p3[1])]);
+        }
+    }
+    if (p.length) out.push([...p[p.length - 1]]);
+    const amp = (f.shape?.curvas ?? 0) * Math.max(2, f.size * 2.2);
+    if (amp > 0 && out.length > 2) {
+        const orig = out.map((q) => [...q]);
+        let total = 0, acc = 0;
+        for (let i = 1; i < orig.length; i++) total += Math.hypot(orig[i][0] - orig[i - 1][0], orig[i][1] - orig[i - 1][1]);
+        for (let i = 1; i < out.length - 1; i++) {
+            acc += Math.hypot(orig[i][0] - orig[i - 1][0], orig[i][1] - orig[i - 1][1]);
+            const dx = orig[i + 1][0] - orig[i - 1][0], dz = orig[i + 1][1] - orig[i - 1][1], l = Math.hypot(dx, dz) || 1;
+            const fade = Math.max(0, Math.min(1, acc / 6, (total - acc) / 6));
+            const off = Math.sin(acc * 0.32 + (f.id || 0)) * amp * fade;
+            out[i][0] += (-dz / l) * off; out[i][1] += (dx / l) * off;
+        }
+    }
+    rioCache.set(f, { key, pts: out });
+    return out;
+}
 function riverDist(f, x, z) {
-    const p = f.points || [];
+    const p = rioPath(f);
     let m = 1e9;
     for (let i = 0; i < p.length - 1; i++) m = Math.min(m, distSeg(x, z, p[i], p[i + 1]));
     return m;
@@ -150,15 +242,21 @@ function riverDist(f, x, z) {
 let prep = { mountains: [], waters: [], agua: [0.5, 0.6, 0.6], oceano: false };
 function prepare() {
     prep = {
-        mountains: features.filter((f) => f.type === 'mountain').map((f) => ({ f, skin: skinOf(f), c: rgb(corOf(f)) })),
-        waters: features.filter((f) => f.type === 'lake' || f.type === 'river').map((f) => ({ f, ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) })),
+        mountains: features.filter((f) => f.type === 'mountain').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)) })),
+        // oceanos primeiro: lagos e rios desenhados por cima continuam visíveis
+        waters: features.filter((f) => f.type === 'ocean').concat(features.filter((f) => f.type === 'lake' || f.type === 'river'))
+            .map((f) => ({ f, F: forma(f), ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) })),
         agua: rgb(theme.cores.agua),
         oceano: theme.fundo === 'oceano',
     };
 }
 
 function mountainHeight(m, x, z, out) {
-    const f = m.f, dx = x - f.x, dz = z - f.z, d2 = dx * dx + dz * dz, size = f.size;
+    const f = m.f, size = f.size;
+    // Coordenadas locais (esticadas/giradas) e contorno irregular encolhendo/esticando a distância
+    const [dx0, dz0] = local(f, x, z, m.F);
+    const b = borda(m.F, Math.atan2(dz0, dx0)), dx = dx0 / b, dz = dz0 / b, d2 = dx * dx + dz * dz;
+    if (d2 > size * size * 9) return 0;
     switch (m.skin) {
         case 'picos': {
             const s = size * 0.5, ridge = 1 + 0.2 * Math.sin(dx * 0.55) * Math.cos(dz * 0.5);
@@ -201,12 +299,20 @@ function sample(x, z) {
     for (const wt of prep.waters) {
         const f = wt.f;
         let amt = 0, t = 0;
-        if (f.type === 'lake') {
-            const d = Math.hypot(x - f.x, z - f.z);
-            if (d >= f.size * 1.25) continue;
-            t = sm(f.size * 1.25, f.size * 0.7, d);
+        if (f.type === 'ocean') {
+            const dn = distN(f, x, z, wt.F);
+            if (dn >= 1.3) continue;
+            const ilha = sm(1.2, 3.5, hm); // montanhas dentro do mar viram ilhas
+            t = sm(1.3, 0.82, dn) * (1 - ilha);
+            o.h = o.h * (1 - t) + (-2.4) * t;
+            amt = sm(1, 0.9, dn) * (1 - sm(0.8, 2.2, hm));
+            o.sea = Math.max(o.sea, amt);
+        } else if (f.type === 'lake') {
+            const dn = distN(f, x, z, wt.F);
+            if (dn >= 1.25) continue;
+            t = sm(1.25, 0.7, dn);
             o.h = o.h * (1 - t) + (-0.6) * t;
-            if (d < f.size) amt = sm(f.size, f.size * 0.88, d);
+            if (dn < 1) amt = sm(1, 0.88, dn);
         } else {
             const d = riverDist(f, x, z), w = f.size;
             if (d >= w * 2.2) continue;
@@ -265,7 +371,7 @@ const stars = (() => {
 })();
 
 const uniforms = {
-    uTime: { value: 0 }, uEstilo: { value: 0 }, uFundo: { value: 0 },
+    uTime: { value: 0 }, uEstilo: { value: 0 }, uFundo: { value: 0 }, uHalf: { value: 100 },
     uTerra: { value: new THREE.Color() }, uTinta: { value: new THREE.Color() },
     uFundoCor: { value: new THREE.Color() }, uAgua: { value: new THREE.Color() },
 };
@@ -284,7 +390,7 @@ const material = new THREE.ShaderMaterial({
         uniform vec3 uTerra; uniform vec3 uTinta; uniform vec3 uFundoCor; uniform vec3 uAgua;
         varying float vW; varying float vH; varying float vM; varying vec3 vWCol; varying vec3 vMCol; varying vec4 vFx;
         varying vec3 vN; varying vec3 vP;
-        const float HALF = ${HALF}.0;
+        uniform float uHalf;
         float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
         float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
             return mix(mix(hash(i),hash(i+vec2(1,0)),f.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x), f.y); }
@@ -309,6 +415,17 @@ const material = new THREE.ShaderMaterial({
             } else if (ws < 3.5) {
                 float b = noise(vP.xz*0.7) * 0.7 + noise(vP.xz*2.4)*0.3;
                 return mix(base, base*0.55 + vec3(0.04,0.07,0.0), smoothstep(0.45,0.7,b));
+            }
+            if (ws > 4.5) { // mar: ondas que passam e cristas de espuma
+                float fase = vP.x*0.22 + vP.z*0.14 + noise(vP.xz*0.08)*5.0;
+                float onda = sin(fase*2.2 - t*1.1);
+                float rip = noise(vP.xz*0.4 + vec2(t*0.12, -t*0.08));
+                vec3 c = base*(0.8 + 0.22*rip) + vec3(1.0)*smoothstep(0.86, 1.0, onda)*0.14*(0.5+rip);
+                if (uEstilo < 0.5) {
+                    float hatch = 0.5 + 0.5*sin((vP.x-vP.z)*2.0 + noise(vP.xz*0.5)*3.0);
+                    c = mix(c, base*0.78, hatch*0.35);
+                }
+                return c;
             }
             float n = noise(vP.xz*0.5 + vec2(t*0.2, t*0.13))*0.6 + noise(vP.xz*2.0 - t*0.3)*0.4;
             vec3 hot = mix(base, vec3(1.0,0.86,0.32), smoothstep(0.5,0.82,n));
@@ -366,12 +483,12 @@ const material = new THREE.ShaderMaterial({
             col = mix(col, mix(vec3(0.95,0.32,0.08), vec3(1.0,0.82,0.3), ln), vFx.z);
 
             // bordas do mapa conforme o fundo
-            float r = length(vP.xz)/HALF + (noise(vP.xz*0.12)-0.5)*0.25;
+            float r = length(vP.xz)/uHalf + (noise(vP.xz*0.12)-0.5)*0.25;
             if (uFundo < 0.5) {
                 col *= 1.0 - smoothstep(0.62,0.8,noise(vP.xz*0.05+7.0))*0.12;
                 col = mix(col, uFundoCor, smoothstep(0.62,1.12,r)*0.85);
             } else if (uFundo < 1.5) {
-                col = mix(col, uFundoCor, smoothstep(0.88,1.02,length(vP.xz)/HALF));
+                col = mix(col, uFundoCor, smoothstep(0.88,1.02,length(vP.xz)/uHalf));
             } else {
                 col = mix(col, uFundoCor, smoothstep(0.8,1.06,r));
             }
@@ -382,6 +499,7 @@ const material = new THREE.ShaderMaterial({
 let terrain = null;
 function buildTerrain() {
     const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+    uniforms.uHalf.value = HALF;
     g.rotateX(-Math.PI / 2);
     const pos = g.attributes.position, n = pos.count;
     const water = new Float32Array(n), hs = new Float32Array(n), ms = new Float32Array(n);
@@ -429,7 +547,7 @@ function applyTheme() {
     } else {
         scene.background = new THREE.Color(c.fundo);
     }
-    scene.fog = theme.fundo === 'nevoa' ? new THREE.Fog(c.fundo, 170, 430) : null;
+    scene.fog = theme.fundo === 'nevoa' ? new THREE.Fog(c.fundo, 170 * K, 430 * K) : null;
     ambient.color.set(noite ? 0xb8c4ff : 0xfff0d0);
     ambient.intensity = noite ? 0.6 : 0.85;
     sun.intensity = noite ? 0.45 : 0.6;
@@ -582,10 +700,11 @@ function marco(skin, roof) {
 }
 
 function muralha(f, grupo) {
-    const R = f.size * 0.95, n = Math.max(10, Math.round(R * 2.2)), pedra = '#bdb39a';
+    const F = forma(f), R = f.size * 0.95, n = Math.max(10, Math.round(R * 2.2 * Math.max(F.sx, F.sz))), pedra = '#bdb39a';
+    const ponto = (a) => paraMundo(f, Math.cos(a) * R * borda(F, a), Math.sin(a) * R * borda(F, a), F);
     for (let i = 0; i < n; i++) {
         const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
-        const x0 = f.x + Math.cos(a0) * R, z0 = f.z + Math.sin(a0) * R, x1 = f.x + Math.cos(a1) * R, z1 = f.z + Math.sin(a1) * R;
+        const [x0, z0] = ponto(a0), [x1, z1] = ponto(a1);
         const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2, len = Math.hypot(x1 - x0, z1 - z0);
         peca(grupo, 'box', pedra, mx, Math.max(heightAt(mx, mz), 0.2) - 0.1, mz, len * 1.04, 1.2, 0.45, -Math.atan2(z1 - z0, x1 - x0));
         if (i % 3 === 0) peca(grupo, 'cyl', pedra, x0, Math.max(heightAt(x0, z0), 0.2) - 0.1, z0, 0.6, 2, 0.6);
@@ -595,10 +714,11 @@ function muralha(f, grupo) {
 function povoado(f) {
     const g = new THREE.Group(), r = rng(f.id + 11), city = f.type === 'city';
     const skin = skinOf(f), roof = corOf(f);
-    const n = city ? Math.round(8 + f.size * 1.6) : Math.round(3 + f.size);
+    const F = forma(f);
+    const n = Math.min(260, city ? Math.round(8 + f.size * 1.6 * (1 + f.size / 20)) : Math.round(3 + f.size * (1 + f.size / 12)));
     for (let i = 0; i < n; i++) {
-        const a = r() * Math.PI * 2, d = (city ? 0.18 : 0) * f.size + Math.sqrt(r()) * f.size * (city ? 0.6 : 0.75);
-        const x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d;
+        const [x, z] = city ? pontoDentro(f, r, F, 0.18, 0.78) : pontoDentro(f, r, F, 0, 0.75);
+        if (sample(x, z).w > 0.3) continue;
         const w = city ? 1.4 + r() * 1.4 : 1.1 + r() * 0.8;
         const h = city ? 1.6 + r() * 2.2 : 1.0 + r() * 0.9;
         const m = casa(skin, roof, w, h, w * (0.8 + r() * 0.5), r);
@@ -634,12 +754,11 @@ function instancias(geo, material, lista) {
 const corVar = (hex, r, k = 0.18) => '#' + new THREE.Color(hex).offsetHSL((r() - 0.5) * 0.04, (r() - 0.5) * k, (r() - 0.5) * k).getHexString();
 
 function floresta(f) {
-    const r = rng(f.id * 7 + 3), skin = skinOf(f), cor = corOf(f);
-    const n = Math.min(320, Math.round(f.size * f.size * 0.38 + 6));
+    const r = rng(f.id * 7 + 3), skin = skinOf(f), cor = corOf(f), F = forma(f);
+    const n = Math.min(900, Math.round(f.size * f.size * 0.38 + 6));
     const troncos = [], copas = [], galhos = [];
     for (let i = 0; i < n; i++) {
-        const a = r() * Math.PI * 2, d = Math.sqrt(r()) * f.size;
-        const x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d;
+        const [x, z] = pontoDentro(f, r, F);
         if (Math.abs(x) > HALF - 2 || Math.abs(z) > HALF - 2) continue;
         const s = sample(x, z);
         if (s.w > 0.15) continue;
@@ -683,11 +802,10 @@ function floresta(f) {
 function enfeitesMontanha(f) {
     const skin = skinOf(f);
     if (skin !== 'rochosa' && skin !== 'cristal') return;
-    const r = rng(f.id * 13 + 5), cor = corOf(f), lista = [];
+    const r = rng(f.id * 13 + 5), cor = corOf(f), lista = [], F = forma(f);
     const n = Math.round(f.size * (skin === 'rochosa' ? 1.3 : 0.9));
     for (let i = 0; i < n; i++) {
-        const a = r() * Math.PI * 2, d = Math.sqrt(r()) * f.size * (skin === 'rochosa' ? 0.65 : 0.45);
-        const x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d, y = heightAt(x, z);
+        const [x, z] = pontoDentro(f, r, F, 0, skin === 'rochosa' ? 0.65 : 0.45), y = heightAt(x, z);
         if (skin === 'rochosa') {
             const s = 0.6 + r() * 1.8;
             lista.push({ x, y: y - s * 0.3, z, sx: s, sy: s * (0.6 + r() * 0.6), sz: s, ry: r() * 6, rx: r(), c: corVar(cor, r, 0.12) });
@@ -703,11 +821,11 @@ function enfeitesMontanha(f) {
 
 function juncos(f) {
     if (f.type !== 'lake' || skinOf(f) !== 'pantano') return;
-    const r = rng(f.id * 17 + 1), lista = [];
-    const n = Math.round(f.size * 6);
+    const r = rng(f.id * 17 + 1), lista = [], F = forma(f);
+    const n = Math.round(f.size * 6 * Math.max(F.sx, F.sz));
     for (let i = 0; i < n; i++) {
-        const a = r() * Math.PI * 2, d = f.size * (0.85 + r() * 0.3);
-        const x = f.x + Math.cos(a) * d, z = f.z + Math.sin(a) * d;
+        const a = r() * Math.PI * 2, d = f.size * (0.85 + r() * 0.3) * borda(F, a);
+        const [x, z] = paraMundo(f, Math.cos(a) * d, Math.sin(a) * d, F);
         lista.push({ x, y: heightAt(x, z) - 0.1, z, sx: 0.05, sy: 0.8 + r() * 0.9, sz: 0.05, rz: (r() - 0.5) * 0.4, c: corVar('#7a8a3a', r, 0.2) });
     }
     instancias(G.cyl, new THREE.MeshLambertMaterial({ color: 0xffffff }), lista);
@@ -732,10 +850,10 @@ const labels = new Map();
 function anchor(f) {
     let x = f.x, z = f.z;
     if (f.type === 'river' && f.points?.length) {
-        const p = f.points[Math.floor(f.points.length / 2)];
+        const pts = rioPath(f), p = pts[Math.floor(pts.length / 2)];
         x = p[0]; z = p[1];
     }
-    const up = { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5 }[f.type];
+    const up = { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1 }[f.type];
     return new THREE.Vector3(x, heightAt(x, z) + up, z);
 }
 function labelHtml(f) {
@@ -767,7 +885,7 @@ function updateLabels() {
     const w = stage.clientWidth, h = stage.clientHeight;
     labels.forEach(({ el, pos, f }) => {
         tmp.copy(pos).project(camera);
-        const far = f.type === 'village' && camera.position.distanceTo(pos) > 200;
+        const far = f.type === 'village' && camera.position.distanceTo(pos) > 200 * Math.max(1, K * 0.8);
         const hide = tmp.z > 1 || Math.abs(tmp.x) > 1.1 || Math.abs(tmp.y) > 1.1 || far;
         el.style.display = hide ? 'none' : '';
         if (!hide) {
@@ -784,7 +902,7 @@ const selMat = new THREE.LineBasicMaterial({ color: 0x8a2d1c, depthTest: false }
 const draftMat = new THREE.PointsMaterial({ color: 0x8a2d1c, size: 7, sizeAttenuation: false, depthTest: false });
 
 function lift(x, z, dy = 0.7) { return new THREE.Vector3(x, heightAt(x, z) + dy, z); }
-const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1 };
+const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1, ocean: 1.02 };
 
 function updateSelection() {
     selGroup.clear();
@@ -792,12 +910,13 @@ function updateSelection() {
     if (!f) return;
     let obj;
     if (f.type === 'river') {
-        obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(f.points.map((p) => lift(p[0], p[1]))), selMat);
+        obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(rioPath(f).map((p) => lift(p[0], p[1]))), selMat);
     } else {
-        const r = f.size * RAIO[f.type], pts = [];
-        for (let i = 0; i < 72; i++) {
-            const a = (i / 72) * Math.PI * 2;
-            pts.push(lift(f.x + Math.cos(a) * r, f.z + Math.sin(a) * r));
+        const F = forma(f), r = f.size * RAIO[f.type], pts = [];
+        for (let i = 0; i < 120; i++) {
+            const a = (i / 120) * Math.PI * 2, b = r * borda(F, a);
+            const [x, z] = paraMundo(f, Math.cos(a) * b, Math.sin(a) * b, F);
+            pts.push(lift(x, z));
         }
         obj = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), selMat);
     }
@@ -829,9 +948,10 @@ const finishBtn = $('#finish-river');
 function setTool(t) {
     tool = t;
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
-    if (t !== 'river') cancelDraft();
+    if (t !== 'river' && t !== 'redraw') cancelDraft();
     hintText.textContent = EDIT ? HINTS[t] : VIEW_HINT;
-    finishBtn.hidden = t !== 'river';
+    finishBtn.hidden = t !== 'river' && t !== 'redraw';
+    finishBtn.textContent = t === 'redraw' ? 'Trocar o curso' : 'Concluir rio';
     canvas.style.cursor = t === 'select' ? 'grab' : 'crosshair';
 }
 document.querySelectorAll('.tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -847,7 +967,7 @@ function pick(e) {
 }
 function reach(f, x, z) {
     if (f.type === 'river') return riverDist(f, x, z) / (f.size * 1.8 + 1);
-    return Math.hypot(x - f.x, z - f.z) / (f.size * RAIO[f.type]);
+    return distN(f, x, z) / RAIO[f.type];
 }
 
 let down = null;
@@ -866,11 +986,11 @@ function onMapClick(p) {
         let best = null, bestScore = 1;
         for (const f of features) {
             const rc = reach(f, p.x, p.z);
-            const s = rc - (f.type === 'city' || f.type === 'village' ? 0.35 : 0);
+            const s = rc - (f.type === 'city' || f.type === 'village' ? 0.35 : 0) + (f.type === 'ocean' ? 0.5 : 0);
             if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
         }
         select(best ? best.id : null);
-    } else if (tool === 'river') {
+    } else if (tool === 'river' || tool === 'redraw') {
         riverDraft.push([p.x, p.z]);
         updateDraft();
     } else if (tool === 'move') {
@@ -882,23 +1002,30 @@ function onMapClick(p) {
 
 async function createFeature(type, x, z, extra = {}) {
     const t = TYPES[type];
-    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: t.fresh, x, z, size: t.size[2], ...extra });
+    const size = type === 'ocean' ? Math.round(HALF * 0.45) : t.size[2];
+    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: t.fresh, x, z, size, ...extra });
     features.push(f);
     rebuildAll();
     select(f.id);
 }
 async function finishRiver() {
-    if (tool !== 'river') return;
+    if (tool !== 'river' && tool !== 'redraw') return;
     if (riverDraft.length < 2) { toast('Marque pelo menos dois pontos para traçar o rio.'); return; }
     const pts = riverDraft;
     cancelDraft();
+    if (tool === 'redraw') {
+        const f = sel();
+        setTool('select');
+        if (f) replaceFeature(await api('PUT', `${API}/features/${f.id}`, { points: pts, x: pts[0][0], z: pts[0][1] }), { rebuild: true });
+        return;
+    }
     await createFeature('river', pts[0][0], pts[0][1], { points: pts });
 }
 async function moveSelected(p) {
     const f = sel();
     setTool('select');
     if (!f) return;
-    const clamp = (v) => Math.max(-100, Math.min(100, Math.round(v * 100) / 100));
+    const clamp = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const body = { x: p.x, z: p.z };
     if (f.type === 'river') {
         const dx = p.x - f.x, dz = p.z - f.z;
@@ -990,10 +1117,11 @@ function mundoHtml() {
     return `<div class="head">
             <label>Nome do mundo <input data-world="name" value="${esc(world.name)}" maxlength="80"></label>
             <label>Descrição <textarea data-world="description" rows="3" maxlength="1000" placeholder="Como é esse mundo?">${esc(world.description)}</textarea></label>
+            ${tamanhoMapaHtml()}
         </div>
         <div class="acoes-mundo">
             <button type="button" class="primary" data-act="salvar">Salvar agora</button>
-            <button type="button" data-act="imagem">Baixar imagem</button>
+            <button type="button" data-act="imagem">Mapa ilustrado</button>
             <a class="btn" href="${URLS.exportar}">Exportar arquivo</a>
             <form method="POST" action="${URLS.copiar}"><input type="hidden" name="_token" value="${CSRF}"><button type="submit">Duplicar</button></form>
             <a class="btn" href="${URLS.ver}" target="_blank" rel="noopener">Ver como jogador</a>
@@ -1001,6 +1129,34 @@ function mundoHtml() {
         <p class="mut nota">Tudo o que você muda no mapa é salvo na hora. "Salvar agora" também atualiza a capa do mundo; o arquivo exportado pode ser importado de volta em Meus mundos.</p>
         <div class="help"><p>Escolha uma ferramenta à esquerda e clique no mapa para criar montanhas, lagos, rios, florestas, cidades e vilas. Com Selecionar, clique num lugar para mudar nome, história, modelo e cor.</p></div>
         ${listaLugares()}`;
+}
+
+function tamanhoMapaHtml() {
+    const pl = world.plano;
+    if (!pl) return '';
+    const opts = Object.entries(pl.dimensoes).map(([d, nome]) => {
+        const bloq = Number(d) > pl.dimensao_max;
+        return `<option value="${d}" ${Number(d) === world.dimension ? 'selected' : ''}>${esc(nome)} (${d} × ${d})${bloq ? ' · plano Cartógrafo' : ''}</option>`;
+    }).join('');
+    return `<label>Tamanho do mapa <select data-dimensao>${opts}</select></label>
+        ${pl.pago ? '' : `<p class="mut nota">No plano grátis o mapa vai até ${pl.dimensao_max} × ${pl.dimensao_max}. <button type="button" class="link" data-act="planos">Ver planos</button></p>`}`;
+}
+
+function formaHtml(f) {
+    const s = f.shape || {}, F = forma(f);
+    const faixa = (k, rot, min, max, step, val, fmt = (v) => v) => `<label>${rot}
+        <span class="range"><input type="range" data-shape="${k}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${fmt(val)}</output></span></label>`;
+    if (f.type === 'river') {
+        return `<h3>Formato</h3>
+            ${faixa('curvas', 'Curvas (meandros)', 0, 1, 0.05, s.curvas ?? 0)}
+            <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o curso</button>
+            ${f.shape ? '<button type="button" class="link" data-act="forma-padrao">Voltar ao formato padrão</button>' : ''}</div>`;
+    }
+    return `<h3>Formato</h3>
+        ${faixa('esticar', 'Proporção (largo ↔ comprido)', 0.3, 3, 0.05, s.esticar ?? 1)}
+        ${faixa('giro', 'Direção (graus)', 0, 360, 5, s.giro ?? 0)}
+        ${faixa('irregular', 'Contorno irregular', 0, 1, 0.05, Math.round(F.irr * 100) / 100)}
+        ${f.shape ? '<p><button type="button" class="link" data-act="forma-padrao">Voltar ao formato padrão</button></p>' : ''}`;
 }
 
 function chips(nome, opcoes, atual, attrs = '') {
@@ -1050,7 +1206,7 @@ function compartilharHtml() {
 
 function lugarEditor(f) {
     const T = TYPES[f.type];
-    const [min, max, , step] = T.size;
+    const [min, , , step] = T.size, max = tamanhoMax(f.type);
     const shopOpts = f.shops.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
     const canShop = f.type === 'city' || f.type === 'village';
     const padrao = SKINS[f.type][theme.skins[f.type]];
@@ -1094,6 +1250,7 @@ function lugarEditor(f) {
                 <label class="cor">${T.corLabel}<input type="color" data-field="color" value="${corOf(f)}"></label>
                 ${f.color ? '<button type="button" class="link" data-act="cor-padrao">Voltar à cor padrão</button>' : '<span class="mut">cor padrão</span>'}
             </div>
+            ${formaHtml(f)}
             <label class="wb-check"><input type="checkbox" data-field="secret" ${f.secret ? 'checked' : ''}> Secreto: escondido dos jogadores e do público</label>
             <div class="linha">
                 <button type="button" data-act="mover">Mover</button>
@@ -1187,6 +1344,27 @@ panel.addEventListener('change', async (e) => {
         renderPanel();
         return;
     }
+    if (t.dataset.shape) {
+        const f = sel();
+        if (!f) return;
+        const shape = { ...(f.shape || {}), [t.dataset.shape]: Number(t.value) };
+        try { replaceFeature(await api('PUT', `${API}/features/${f.id}`, { shape }), { rebuild: true }); } catch { renderPanel(); }
+        return;
+    }
+    if (t.dataset.dimensao !== undefined) {
+        const d = Number(t.value);
+        try {
+            world = (await api('PUT', `${API}/worlds/${WORLD}`, { dimension: d })).world;
+            setDimensao(world.dimension);
+            camera.position.set(0, 120 * K, 150 * K);
+            controls.target.set(0, 0, 0);
+            applyTheme();
+            rebuildAll();
+            toast('Mapa agora tem ' + world.dimension + ' × ' + world.dimension + '.');
+        } catch { /* aviso já mostrado */ }
+        renderPanel();
+        return;
+    }
     if (t.dataset.world) {
         try {
             world = (await api('PUT', `${API}/worlds/${WORLD}`, { [t.dataset.world]: t.value })).world;
@@ -1241,7 +1419,7 @@ panel.addEventListener('click', async (e) => {
             return mudarTema((th) => { th.fundo = p.fundo; th.estilo = p.estilo; th.cores = { ...p.cores }; });
         }
         case 'salvar': return salvarAgora();
-        case 'imagem': return baixarImagem();
+        case 'imagem': return abrirAtlas();
         case 'copiar-link': {
             const inp = $('#link-ver');
             inp.select();
@@ -1254,6 +1432,15 @@ panel.addEventListener('click', async (e) => {
             return;
         case 'mover':
             setTool('move');
+            return;
+        case 'redesenhar':
+            setTool('redraw');
+            return;
+        case 'forma-padrao':
+            replaceFeature(await api('PUT', `${API}/features/${f.id}`, { shape: null }), { rebuild: true });
+            return;
+        case 'planos':
+            location.href = world.plano?.url || '/';
             return;
         case 'cor-padrao':
             replaceFeature(await api('PUT', `${API}/features/${f.id}`, { color: null }), { rebuild: true });
@@ -1313,7 +1500,17 @@ async function salvarAgora() {
     await enviarCapa(true);
 }
 
-function baixarImagem() {
+// Mapa ilustrado (public/js/atlas.js): desenho 2D interativo a partir do mundo
+function abrirAtlas() {
+    if (!window.WBAtlas) { baixarVista3D(); return; }
+    window.WBAtlas.abrir({
+        world, theme, features, EDIT, SIZE, HALF, TYPES, SKINS,
+        sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf,
+        comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
+        baixar3D: baixarVista3D,
+    });
+}
+function baixarVista3D() {
     renderLimpo();
     const c = document.createElement('canvas');
     c.width = canvas.width; c.height = canvas.height;
@@ -1347,7 +1544,7 @@ function baixarImagem() {
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     }, 'image/png');
 }
-$('#btn-imagem')?.addEventListener('click', baixarImagem);
+$('#btn-imagem')?.addEventListener('click', abrirAtlas);
 $('#btn-salvar')?.addEventListener('click', salvarAgora);
 
 /* ---------- Loop e inicialização ---------- */
@@ -1377,6 +1574,8 @@ function animate() {
     world = data.world;
     theme = world.theme;
     features = data.features;
+    setDimensao(world.dimension);
+    camera.position.set(0, 120 * K, 150 * K);
     applyTheme();
     rebuildAll();
     renderPanel();

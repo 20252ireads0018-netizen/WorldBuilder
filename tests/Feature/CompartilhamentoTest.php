@@ -24,6 +24,7 @@ class CompartilhamentoTest extends TestCase
     {
         parent::setUp();
         $this->mestre = User::factory()->create(['name' => 'Mestre', 'email' => 'mestre@ex.com']);
+        $this->mestre->forceFill(['plano' => 'pago', 'plano_vitalicio' => true])->save();
         $this->jogador = User::factory()->create(['name' => 'Jogadora', 'email' => 'jogadora@ex.com']);
         $this->estranho = User::factory()->create(['name' => 'Estranho']);
         $this->mundo = WorldbuilderController::criarExemplo($this->mestre->id);

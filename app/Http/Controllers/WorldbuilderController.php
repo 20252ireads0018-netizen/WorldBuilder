@@ -20,8 +20,6 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class WorldbuilderController extends Controller
 {
-    public const MAX_MUNDOS = 30;
-
     public function index(): View
     {
         $worlds = World::where('user_id', Auth::id())
@@ -59,13 +57,19 @@ class WorldbuilderController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
+            'dimension' => ['nullable', 'integer', \Illuminate\Validation\Rule::in(array_keys(config('planos.dimensoes')))],
         ]);
 
         if ($this->limiteAtingido()) {
             return $this->erroLimite();
         }
+        $dimensao = (int) ($data['dimension'] ?? 200);
+        if ($r = $this->checarDimensao($dimensao)) {
+            return $r;
+        }
 
-        $world = new World($data);
+        $world = new World(['name' => $data['name'], 'description' => $data['description'] ?? null]);
+        $world->dimension = $dimensao;
         $world->user_id = Auth::id();
         $world->save();
 
@@ -156,6 +160,9 @@ class WorldbuilderController extends Controller
         if (! is_array($dados)) {
             return back()->withErrors(['arquivo' => 'Esse arquivo não é um JSON válido.']);
         }
+        if ($r = $this->checarDimensao((int) ($dados['dimension'] ?? 200))) {
+            return $r;
+        }
 
         try {
             $world = MundoArquivo::importar($dados, (int) Auth::id());
@@ -174,6 +181,9 @@ class WorldbuilderController extends Controller
         if ($this->limiteAtingido()) {
             return $this->erroLimite();
         }
+        if ($r = $this->checarDimensao((int) $world->dimension)) {
+            return $r;
+        }
 
         $dados = MundoArquivo::exportar($world, $dono);
         $nome = Str::limit(($dono ? 'Cópia de ' : '') . $world->name, 80, '');
@@ -189,12 +199,32 @@ class WorldbuilderController extends Controller
 
     private function limiteAtingido(): bool
     {
-        return World::where('user_id', Auth::id())->count() >= self::MAX_MUNDOS;
+        return ! Auth::user()->podeCriarMundo();
     }
 
+    /** No plano grátis, quem passa do limite vai para a página de planos; no pago, recebe o aviso de sempre. */
     private function erroLimite(string $campo = 'name'): RedirectResponse
     {
-        return back()->withErrors([$campo => 'Você chegou ao limite de ' . self::MAX_MUNDOS . ' mundos. Exclua um para criar outro.']);
+        $user = Auth::user();
+        $max = $user->limites()['mundos'];
+        if (! $user->temPlanoPago()) {
+            return redirect()->route('planos', ['motivo' => 'mundos'])
+                ->with('status', "O plano grátis permite $max mundos. Assine o plano Cartógrafo para criar mais.");
+        }
+
+        return back()->withErrors([$campo => "Você chegou ao limite de $max mundos. Exclua um para criar outro."]);
+    }
+
+    /** Mapa maior que o plano permite: manda para a página de planos. */
+    private function checarDimensao(int $dimensao): ?RedirectResponse
+    {
+        $max = Auth::user()->limites()['dimensao'];
+        if ($dimensao <= $max) {
+            return null;
+        }
+
+        return redirect()->route('planos', ['motivo' => 'dimensao'])
+            ->with('status', "Esse mundo tem mapa de tamanho $dimensao, e o plano grátis vai até $max. Assine o plano Cartógrafo para abrir mapas maiores.");
     }
 
     /** Eldoria: montanhas, lagos, rios, florestas, cidades e vilas com uma loja, NPCs e itens de exemplo. */

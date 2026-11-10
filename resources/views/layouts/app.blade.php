@@ -21,11 +21,17 @@
         </a>
         <nav class="wb-menu" aria-label="Conta">
             <a href="{{ route('worldbuilder.explorar') }}" @class(['on' => request()->routeIs('worldbuilder.explorar')])>Explorar</a>
+            <a href="{{ route('planos') }}" @class(['on' => request()->routeIs('planos')])>Planos</a>
             @auth
                 <a href="{{ route('worldbuilder.index') }}" @class(['on' => request()->routeIs('worldbuilder.index')])>Meus mundos</a>
+                @if (auth()->user()->is_admin)
+                    @php($informados = \App\Models\Pagamento::where('status', 'informado')->count())
+                    <a href="{{ route('admin.pagamentos') }}" @class(['on' => request()->routeIs('admin.*')])>Pagamentos @if($informados)<span class="contador">{{ $informados }}</span>@endif</a>
+                @endif
                 <span class="wb-nome" title="{{ auth()->user()->name }}">
                     <span class="wb-avatar" aria-hidden="true">{{ mb_strtoupper(mb_substr(auth()->user()->name, 0, 1)) }}</span>
                     <span class="wb-nome-txt">{{ auth()->user()->name }}</span>
+                    @if (auth()->user()->temPlanoPago())<span class="selo publico selo-plano">Cartógrafo</span>@endif
                 </span>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\PlanosController;
 use App\Http\Controllers\WorldbuilderApiController;
 use App\Http\Controllers\WorldbuilderController;
 use Illuminate\Support\Facades\Route;
@@ -23,8 +24,18 @@ Route::get('/mundos/{world}/capa', [WorldbuilderController::class, 'capa'])->whe
 Route::get('/api/worlds/{world}/data', [WorldbuilderApiController::class, 'data'])
     ->whereNumber('world')->middleware('throttle:120,1')->name('api.data');
 
+// ---------- Planos ----------
+Route::get('/planos', [PlanosController::class, 'index'])->name('planos');
+
 // ---------- Mundos (exige login) ----------
 Route::middleware('auth')->group(function () {
+    Route::post('/planos/{oferta}', [PlanosController::class, 'comprar'])->whereAlpha('oferta')->middleware('throttle:10,1')->name('planos.comprar');
+    Route::get('/pagamentos/{pagamento}', [PlanosController::class, 'show'])->name('pagamentos.show');
+    Route::post('/pagamentos/{pagamento}/paguei', [PlanosController::class, 'paguei'])->middleware('throttle:10,1')->name('pagamentos.paguei');
+    Route::get('/admin/pagamentos', [PlanosController::class, 'admin'])->name('admin.pagamentos');
+    Route::post('/admin/pagamentos/{pagamento}/confirmar', [PlanosController::class, 'confirmar'])->name('admin.pagamentos.confirmar');
+    Route::post('/admin/pagamentos/{pagamento}/cancelar', [PlanosController::class, 'cancelar'])->name('admin.pagamentos.cancelar');
+
     Route::prefix('/mundos')->name('worldbuilder.')->group(function () {
         Route::get('/', [WorldbuilderController::class, 'index'])->name('index');
         Route::post('/', [WorldbuilderController::class, 'store'])->middleware('throttle:20,1')->name('store');

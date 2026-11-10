@@ -558,3 +558,103 @@ body.wb-editor { height: 100vh; overflow: hidden; background: var(--night); }
 
 /* atributo hidden vence o display dos botões */
 .wb [hidden] { display: none !important; }
+
+/* ---------- Planos e pagamento ---------- */
+.wb .planos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; margin-top: 10px; align-items: stretch; }
+.wb .plano {
+    position: relative; display: flex; flex-direction: column; gap: 8px; padding: 28px 24px 24px; border-radius: var(--raio);
+    background: linear-gradient(180deg, rgba(239, 224, 185, .08), rgba(239, 224, 185, .02)); border: 1px solid rgba(212, 166, 74, .25); color: #d5c08f;
+}
+.wb .plano.pago { background: var(--ruido), radial-gradient(ellipse at 50% 30%, #f7ebcb, var(--paper) 60%, var(--paper-2)); color: var(--ink); border-color: #9a7a42; box-shadow: var(--sombra); }
+.wb .plano.destaque { box-shadow: 0 0 0 2px var(--gold), var(--sombra); transform: translateY(-6px); }
+.wb .plano h2 { font-size: 22px; color: var(--gold-2); }
+.wb .plano.pago h2 { color: var(--ink); }
+.wb .plano h2 small { display: block; font-family: var(--f-texto); font-size: 15px; font-weight: 500; color: var(--seal); letter-spacing: .04em; }
+.wb .preco { font-family: var(--f-titulo); font-size: 34px; font-weight: 700; line-height: 1.1; }
+.wb .preco small { font-family: var(--f-texto); font-size: 15px; font-weight: 400; opacity: .75; }
+.wb .beneficios { list-style: none; padding: 0; margin: 6px 0 14px; flex: 1; font-size: 16px; }
+.wb .beneficios li { padding: 5px 0 5px 22px; position: relative; border-bottom: 1px dotted rgba(154, 122, 66, .35); }
+.wb .beneficios li::before { content: '✦'; position: absolute; left: 0; color: var(--gold-3); font-size: 13px; top: 8px; }
+.wb .plano form { margin: 0; }
+.wb .plano button.largo { margin-top: 0; }
+.wb .largo-btn { width: 100%; }
+.wb .btn.desligado { opacity: .6; cursor: default; pointer-events: none; color: inherit; border-color: currentColor; }
+.wb .fita {
+    position: absolute; top: -12px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+    font-family: var(--f-titulo); font-size: 11px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    background: linear-gradient(180deg, var(--seal-2), var(--seal)); color: #fdeccf; padding: 5px 14px; border-radius: 999px;
+}
+.wb .nota-planos { color: #a58d5b; margin-top: 26px; font-size: 16px; max-width: 760px; }
+.wb .nota-planos a { color: var(--gold-2); }
+.wb .plano-atual { display: flex; gap: 18px; align-items: center; }
+.wb .plano-atual .selo-bussola { margin: 0; flex-shrink: 0; }
+.wb .pix-grade { display: grid; grid-template-columns: 240px 1fr; gap: 30px; align-items: start; }
+.wb .pix-qr { text-align: center; }
+.wb #qr { background: #fff; padding: 10px; border-radius: 6px; border: 1px solid #9a7a42; aspect-ratio: 1; }
+.wb #qr svg { width: 100%; height: 100%; display: block; }
+.wb .pix-qr p { font-size: 14px; margin-top: 8px; }
+.wb .valor { font-family: var(--f-titulo); font-size: 38px; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.wb .passos { margin: 16px 0 18px; padding-left: 22px; font-size: 16px; }
+.wb .passos li { margin-top: 4px; }
+.wb .aviso-claro { background: rgba(47, 86, 80, .14); border-left: 3px solid var(--water); padding: 10px 14px; border-radius: 4px; }
+.wb .tabela { width: 100%; border-collapse: collapse; font-size: 16px; margin-top: 8px; }
+.wb .tabela th { text-align: left; font-family: var(--f-titulo); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); padding: 6px 8px; border-bottom: 1px solid rgba(107, 81, 41, .4); }
+.wb .tabela td { padding: 9px 8px; border-bottom: 1px dotted rgba(107, 81, 41, .4); vertical-align: top; }
+.wb .tabela .mut { font-size: 14px; }
+.wb .acoes-tabela { display: flex; gap: 6px; flex-wrap: wrap; }
+.wb .acoes-tabela form { margin: 0; }
+.wb .acoes-tabela button { font-size: 14px; padding: 5px 10px; }
+.wb-menu .contador { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--seal); color: #fdeccf; font-size: 12px; font-weight: 700; }
+.wb .selo-plano { font-size: 9px; padding: 2px 7px; }
+@media (max-width: 640px) {
+    .wb .pix-grade { grid-template-columns: 1fr; }
+    .wb .pix-qr { max-width: 240px; margin: 0 auto; }
+    .wb .plano.destaque { transform: none; }
+    .wb .tabela thead { display: none; }
+    .wb .tabela td { display: block; border: 0; padding: 3px 0; }
+    .wb .tabela tr { display: block; padding: 10px 0; border-bottom: 1px dotted rgba(107, 81, 41, .4); }
+    .wb .selo-plano { display: none; }
+}
+
+/* ---------- Oceano no mapa 3D ---------- */
+.wb .label.ocean { font-style: italic; letter-spacing: .32em; font-size: 22px; color: var(--rot-agua, var(--water)); }
+
+/* ---------- Mapa ilustrado ---------- */
+body.atlas-on { overflow: hidden; }
+.wb .atlas { position: fixed; inset: 0; z-index: 50; display: none; grid-template-columns: 1fr 340px; background: rgba(10, 6, 3, .94); }
+.wb .atlas.aberto { display: grid; }
+.wb .atlas-palco { position: relative; overflow: hidden; }
+.wb .atlas-palco canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.wb .atlas-palco canvas:active { cursor: grabbing; }
+.wb .atlas-carregando {
+    position: absolute; inset: 0; display: grid; place-items: center; color: var(--gold-2);
+    font-family: var(--f-titulo); letter-spacing: .1em; font-size: 20px; background: rgba(10, 6, 3, .7);
+}
+.wb .atlas-zoom { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.wb .atlas-zoom button { width: 40px; height: 40px; padding: 0; font-size: 20px; background: rgba(18, 11, 6, .8); color: var(--paper); border-color: rgba(212, 166, 74, .5); }
+.wb .atlas-zoom button:hover { border-color: var(--gold); background: rgba(42, 27, 14, .95); color: #fff1c8; }
+.wb .atlas-dica { position: absolute; left: 16px; bottom: 16px; color: #cdb889; font-size: 14px; font-style: italic; background: rgba(18, 11, 6, .7); padding: 6px 12px; border-radius: 4px; pointer-events: none; }
+.wb .atlas-info {
+    position: absolute; width: 290px; padding: 14px 16px; border-radius: 6px;
+    background: var(--ruido), linear-gradient(180deg, #f6e8c4, var(--paper)); border: 1px solid #9a7a42; box-shadow: 0 16px 34px -10px rgba(0, 0, 0, .8);
+}
+.wb .atlas-info h3 { font-size: 19px; margin: 2px 0 6px; }
+.wb .atlas-info p { font-size: 15px; margin-top: 4px; white-space: pre-line; }
+.wb .atlas-info .kind { color: var(--seal); font-style: italic; font-size: 14px; margin: 0; }
+.wb .atlas-info .x, .wb .atlas-topo .x { position: absolute; top: 6px; right: 6px; border: 0; background: none; color: var(--seal); font-size: 22px; padding: 0 8px; }
+.wb .atlas-topo .x { position: static; }
+.wb .atlas-lado {
+    background: var(--ruido), linear-gradient(180deg, #f5e7c3, var(--paper) 30%, var(--paper-2));
+    border-left: 1px solid #9a7a42; overflow-y: auto; padding: 18px 22px 30px;
+}
+.wb .atlas-topo { display: flex; justify-content: space-between; align-items: center; }
+.wb .atlas-lado h2 { font-size: 22px; }
+.wb .atlas-lado h3 { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); margin: 20px 0 8px; padding-top: 12px; border-top: 1px solid rgba(107, 81, 41, .3); }
+.wb .atlas-opcoes { display: grid; grid-template-columns: 1fr; gap: 2px; }
+.wb .atlas-opcoes label { margin-top: 4px; font-size: 16px; color: var(--ink); }
+.wb .atlas-botoes { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+@media (max-width: 860px) {
+    .wb .atlas { grid-template-columns: 1fr; grid-template-rows: 58vh 1fr; }
+    .wb .atlas-lado { border-left: 0; border-top: 1px solid #9a7a42; }
+    .wb .atlas-dica { display: none; }
+}

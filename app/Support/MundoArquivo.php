@@ -36,6 +36,7 @@ final class MundoArquivo
                 'z' => $f->z,
                 'size' => $f->size,
                 'points' => $f->points,
+                'shape' => $f->shape,
                 'skin' => $f->skin,
                 'color' => $f->color,
                 'secret' => $f->secret,
@@ -55,6 +56,7 @@ final class MundoArquivo
             'versao' => 1,
             'name' => $world->name,
             'description' => $world->description,
+            'dimension' => (int) ($world->dimension ?: 200),
             'theme' => $world->tema(),
             'features' => $features,
         ];
@@ -66,21 +68,23 @@ final class MundoArquivo
     public static function importar(array $dados, int $userId, ?string $nome = null): World
     {
         $max = Api::MAX_FILHOS;
+        $dims = array_keys(config('planos.dimensoes'));
+        $dimensao = in_array((int) ($dados['dimension'] ?? 200), $dims, true) ? (int) ($dados['dimension'] ?? 200) : 200;
+        $lugar = [];
+        foreach (Aparencia::regrasLugar($dimensao) as $k => $r) {
+            $lugar['features.*.' . $k] = $r;
+        }
         $v = Validator::make($dados, [
             'formato' => 'required|in:' . self::FORMATO,
             'name' => 'required|string|max:80',
             'description' => 'nullable|string|max:1000',
+            'dimension' => 'nullable|integer|in:' . implode(',', $dims),
             'theme' => 'nullable|array',
             'features' => 'present|array|max:' . Api::MAX_LOCAIS,
             'features.*.type' => 'required|in:' . implode(',', Aparencia::TIPOS),
             'features.*.name' => 'required|string|max:80',
             'features.*.description' => 'nullable|string|max:2000',
-            'features.*.x' => 'required|numeric|between:-100,100',
-            'features.*.z' => 'required|numeric|between:-100,100',
-            'features.*.size' => 'required|numeric|between:1,60',
-            'features.*.points' => 'nullable|array|max:200',
-            'features.*.points.*' => 'array|size:2',
-            'features.*.points.*.*' => 'numeric|between:-100,100',
+        ] + $lugar + [
             'features.*.skin' => 'nullable|string|max:20',
             'features.*.color' => ['nullable', 'regex:' . Aparencia::COR],
             'features.*.secret' => 'nullable|boolean',
@@ -103,8 +107,9 @@ final class MundoArquivo
         ]);
         $d = $v->validate();
 
-        return DB::transaction(function () use ($d, $userId, $nome) {
+        return DB::transaction(function () use ($d, $userId, $nome, $dimensao) {
             $world = new World(['name' => $nome ?? $d['name'], 'description' => $d['description'] ?? null]);
+            $world->dimension = $dimensao;
             $world->user_id = $userId;
             $world->theme = Aparencia::normalizar($d['theme'] ?? null);
             $world->save();
@@ -123,6 +128,7 @@ final class MundoArquivo
                     'z' => $f['z'],
                     'size' => $f['size'],
                     'points' => $rio ? $f['points'] : null,
+                'shape' => Aparencia::formato($f['shape'] ?? null),
                     'skin' => Aparencia::skinValida($f['type'], $skin) ? $skin : null,
                     'color' => isset($f['color']) ? strtolower($f['color']) : null,
                     'secret' => (bool) ($f['secret'] ?? false),

@@ -11,10 +11,11 @@ class Feature extends Model
 {
     protected $table = 'wb_features';
 
-    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points', 'skin', 'color', 'secret'];
+    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points', 'skin', 'color', 'secret', 'shape'];
 
     protected $casts = [
         'points' => 'array',
+        'shape' => 'array',
         'x' => 'float',
         'z' => 'float',
         'size' => 'float',

@@ -8,7 +8,7 @@ namespace App\Support;
  */
 final class Aparencia
 {
-    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest'];
+    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean'];
 
     public const FUNDOS = ['pergaminho', 'oceano', 'noite', 'nevoa', 'cor'];
 
@@ -26,6 +26,7 @@ final class Aparencia
         'city' => self::POVOADO,
         'village' => self::POVOADO,
         'forest' => ['carvalhos', 'pinheiros', 'outono', 'morta', 'magica'],
+        'ocean' => ['mar', 'tropical', 'tempestuoso', 'gelado', 'abissal'],
     ];
 
     public const COR = '/^#[0-9a-fA-F]{6}$/';
@@ -93,5 +94,45 @@ final class Aparencia
     public static function skinValida(string $tipo, ?string $skin): bool
     {
         return $skin === null || in_array($skin, self::SKINS[$tipo] ?? [], true);
+    }
+
+    /**
+     * Regras de posição, tamanho e formato de um lugar num mundo de lado $dimensao.
+     * $parcial = true para edição (PUT), em que cada campo é opcional.
+     */
+    public static function regrasLugar(int $dimensao, bool $parcial = false): array
+    {
+        $meia = intdiv($dimensao, 2);
+        $obrig = $parcial ? 'sometimes|required|' : 'required|';
+
+        return [
+            'x' => $obrig . "numeric|between:-$meia,$meia",
+            'z' => $obrig . "numeric|between:-$meia,$meia",
+            'size' => $obrig . 'numeric|between:1,' . max(60, $meia),
+            'points' => ($parcial ? 'sometimes|array|min:2' : 'nullable|array') . '|max:200',
+            'points.*' => 'array|size:2',
+            'points.*.*' => "numeric|between:-$meia,$meia",
+            'shape' => ($parcial ? 'sometimes|' : '') . 'nullable|array',
+            'shape.esticar' => 'nullable|numeric|between:0.3,3',
+            'shape.giro' => 'nullable|numeric|between:0,360',
+            'shape.irregular' => 'nullable|numeric|between:0,1',
+            'shape.curvas' => 'nullable|numeric|between:0,1',
+        ];
+    }
+
+    /** Guarda só as chaves conhecidas do formato (null quando tudo está no padrão). */
+    public static function formato(?array $shape): ?array
+    {
+        if (! $shape) {
+            return null;
+        }
+        $out = [];
+        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0] as $k => $padrao) {
+            if (isset($shape[$k]) && is_numeric($shape[$k]) && (float) $shape[$k] !== $padrao) {
+                $out[$k] = round((float) $shape[$k], 3);
+            }
+        }
+
+        return $out ?: null;
     }
 }

@@ -37,6 +37,9 @@
         <button type="button" class="tool active" data-tool="select">
             <svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"/></svg>Selecionar
         </button>
+        <button type="button" class="tool" data-tool="ocean">
+            <svg viewBox="0 0 24 24"><path d="M2 9c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0M2 14c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0M2 19c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0"/></svg>Oceano
+        </button>
         <button type="button" class="tool" data-tool="mountain">
             <svg viewBox="0 0 24 24"><path d="M2 20l7-13 4 7 3-4 6 10z"/></svg>Montanha
         </button>
@@ -69,7 +72,7 @@
             @if($editar)
                 <button type="button" id="btn-salvar" class="primary">Salvar</button>
             @endif
-            <button type="button" id="btn-imagem">Baixar imagem</button>
+            <button type="button" id="btn-imagem">Mapa ilustrado</button>
             @if(! $editar)
                 @if($world->ehDono(auth()->user()))
                     <a class="btn primary" href="{{ route('worldbuilder.show', $world) }}">Editar</a>
@@ -99,6 +102,7 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="{{ asset('js/atlas.js') }}?v={{ @filemtime(public_path('js/atlas.js')) ?: 1 }}"></script>
 <script src="{{ asset('js/worldbuilder.js') }}?v={{ @filemtime(public_path('js/worldbuilder.js')) ?: 1 }}"></script>
 </body>
 </html>
