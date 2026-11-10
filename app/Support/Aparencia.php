@@ -29,7 +29,7 @@ final class Aparencia
 
     public const ESTILOS = ['pergaminho', 'natural', 'ilustrado'];
 
-    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta', 'floresta', 'telhado', 'estrada', 'ilha'];
+    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta', 'floresta', 'telhado', 'estrada', 'ilha', 'mar', 'torre', 'ruinas', 'fenomeno', 'regiao'];
 
     private const AGUA = ['calma', 'cristalina', 'congelada', 'pantano', 'lava'];
     private const POVOADO = ['medieval', 'elfica', 'deserto', 'nordica', 'fortaleza', 'oriental', 'ruinas'];
@@ -67,6 +67,11 @@ final class Aparencia
                 'telhado' => '#9a4a2c',
                 'estrada' => '#8a6a44',
                 'ilha' => '#7fa65a',
+                'mar' => '#5b7269',
+                'torre' => '#a8322a',
+                'ruinas' => '#a39c8c',
+                'fenomeno' => '#9a6fd0',
+                'regiao' => '#b03a2e',
             ],
             'skins' => array_map(fn (array $s) => $s[0], self::SKINS),
         ];
@@ -88,12 +93,24 @@ final class Aparencia
             $v = $tema['cores'][$c] ?? null;
             $out['cores'][$c] = is_string($v) && preg_match(self::COR, $v) ? strtolower($v) : $p['cores'][$c];
         }
+        // mundos antigos sem cor de mar: um tom mais escuro da água, como o editor já mostrava
+        $mar = $tema['cores']['mar'] ?? null;
+        if (! (is_string($mar) && preg_match(self::COR, $mar))) {
+            $out['cores']['mar'] = self::escurecer($out['cores']['agua'], 0.72);
+        }
         foreach (self::SKINS as $tipo => $lista) {
             $v = $tema['skins'][$tipo] ?? null;
             $out['skins'][$tipo] = in_array($v, $lista, true) ? $v : $p['skins'][$tipo];
         }
 
         return $out;
+    }
+
+    private static function escurecer(string $hex, float $k): string
+    {
+        $n = hexdec(substr($hex, 1));
+
+        return sprintf('#%02x%02x%02x', (int) round((($n >> 16) & 255) * $k), (int) round((($n >> 8) & 255) * $k), (int) round(($n & 255) * $k));
     }
 
     /** Regras de validação do tema enviado pelo editor. */

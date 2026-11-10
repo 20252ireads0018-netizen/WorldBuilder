@@ -94,10 +94,10 @@ const SKIN_COR = {
     road: { terra: null, pedra: '#a39a8a', trilha: '#93744c', real: '#c7ad78' },
     city: { medieval: null, elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
     ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
-    tower: { vigia: '#a8322a', mago: '#5b4a9a', farol: '#b8322a', sombria: '#d0302a', elfica: '#4d7a4a' },
-    ruins: { castelo: '#a39c8c', templo: '#d8d0bc', pedras: '#8c8a84', cidade: '#b0a48a', arcana: '#4fd1c5' },
-    region: { preenchida: '#b03a2e', hachurada: '#7a3a8a', borda: '#2f4a7a' },
-    phenomenon: { nevoa: '#9a6fd0', chuva: '#9cc0e0', tempestade: '#454c5a', terremoto: '#3a2618', nevasca: '#ffffff', magia: '#4fd1c5' },
+    tower: { vigia: null, mago: '#5b4a9a', farol: '#b8322a', sombria: '#d0302a', elfica: '#4d7a4a' },
+    ruins: { castelo: null, templo: '#d8d0bc', pedras: '#8c8a84', cidade: '#b0a48a', arcana: '#4fd1c5' },
+    region: { preenchida: null, hachurada: '#7a3a8a', borda: '#2f4a7a' },
+    phenomenon: { nevoa: null, chuva: '#9cc0e0', tempestade: '#454c5a', terremoto: '#3a2618', nevasca: '#ffffff', magia: '#4fd1c5' },
 };
 SKIN_COR.river = SKIN_COR.lake;
 SKIN_COR.village = SKIN_COR.city;
@@ -121,8 +121,11 @@ const WS = { calma: 0, cristalina: 1, congelada: 2, pantano: 3, lava: 4, mar: 5,
 
 const FUNDOS = { pergaminho: 'Pergaminho', oceano: 'Ilha no oceano', noite: 'Céu noturno', nevoa: 'Névoa', cor: 'Cor sólida' };
 const ESTILOS = { pergaminho: 'Pergaminho', natural: 'Natural', ilustrado: 'Ilustrado' };
-const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', floresta: 'Florestas', telhado: 'Telhados', estrada: 'Estradas', ilha: 'Ilhas', tinta: 'Tinta e contornos' };
-const COR_PADRAO = { floresta: '#4f7a3a', telhado: '#9a4a2c', estrada: '#8a6a44', ilha: '#7fa65a' };
+const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', mar: 'Mares e oceanos', ilha: 'Ilhas', floresta: 'Florestas',
+    telhado: 'Cidades e vilas', estrada: 'Estradas', torre: 'Torres', ruinas: 'Ruínas', fenomeno: 'Fenômenos', regiao: 'Regiões', tinta: 'Tinta e contornos' };
+const COR_PADRAO = { floresta: '#4f7a3a', telhado: '#9a4a2c', estrada: '#8a6a44', ilha: '#7fa65a', torre: '#a8322a', ruinas: '#a39c8c', fenomeno: '#9a6fd0', regiao: '#b03a2e' };
+// Cor do tema de cada tipo (o modelo padrão de cada tipo usa esta cor)
+const corDoTema = (k) => theme.cores[k] || (k === 'mar' ? '#' + new THREE.Color(theme.cores.agua).multiplyScalar(0.72).getHexString() : COR_PADRAO[k]);
 const TEMAS = {
     pergaminho: { label: 'Pergaminho antigo', fundo: 'pergaminho', estilo: 'pergaminho', cores: { fundo: '#2a1c10', terra: '#e3c47e', montanha: '#9a7b52', agua: '#7f9f93', tinta: '#4d3017' } },
     verde:      { label: 'Terras verdes',     fundo: 'oceano',     estilo: 'natural',    cores: { fundo: '#1d4e6e', terra: '#7fa65a', montanha: '#7d6a58', agua: '#3f86a8', tinta: '#2c3a24' } },
@@ -150,11 +153,8 @@ function corOf(f) {
     if (c) return c;
     if (f.type === 'mountain') return theme.cores.montanha;
     if (f.type === 'lake' || f.type === 'river') return theme.cores.agua;
-    if (f.type === 'ocean') return '#' + new THREE.Color(theme.cores.agua).multiplyScalar(0.72).getHexString();
-    if (f.type === 'forest') return theme.cores.floresta || '#4f7a3a';
-    if (f.type === 'city' || f.type === 'village') return theme.cores.telhado || '#9a4a2c';
-    if (f.type === 'road') return theme.cores.estrada || '#8a6a44';
-    if (f.type === 'island') return theme.cores.ilha || '#7fa65a';
+    const k = { ocean: 'mar', forest: 'floresta', city: 'telhado', village: 'telhado', road: 'estrada', island: 'ilha', tower: 'torre', ruins: 'ruinas', phenomenon: 'fenomeno', region: 'regiao' }[f.type];
+    if (k) return corDoTema(k);
     return '#888888';
 }
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
@@ -2272,7 +2272,7 @@ function chips(nome, opcoes, atual, attrs = '') {
 function aparenciaHtml() {
     const temas = Object.entries(TEMAS).map(([k, t]) => `<button type="button" class="tema" data-act="tema" data-k="${k}">
         <span class="amostra">${['fundo', 'terra', 'montanha', 'agua'].map((c) => `<i style="background:${t.cores[c]}"></i>`).join('')}</span>${esc(t.label)}</button>`).join('');
-    const cores = Object.entries(CORES).map(([k, l]) => `<label class="cor">${l}<input type="color" data-cor="${k}" value="${theme.cores[k] || COR_PADRAO[k] || '#888888'}"></label>`).join('');
+    const cores = Object.entries(CORES).map(([k, l]) => `<label class="cor">${l}<input type="color" data-cor="${k}" value="${corDoTema(k) || '#888888'}"></label>`).join('');
     const skins = Object.keys(TYPES).map((t) => `<label>${PLURAL[t]}
         <select data-skin-padrao="${t}">${Object.entries(SKINS[t]).map(([k, l]) => `<option value="${k}" ${theme.skins[t] === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`).join('');
     return `<h3>Temas prontos</h3><div class="temas">${temas}</div>
