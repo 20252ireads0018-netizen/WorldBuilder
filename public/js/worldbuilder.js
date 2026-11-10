@@ -34,21 +34,23 @@ const TYPES = {
     tower:    { label: 'Torre',    fresh: 'Torre sem nome',    size: [1.5, 10, 3.5, 0.5],     sizeLabel: 'Tamanho',  corLabel: 'Cor do telhado e detalhes' },
     ruins:    { label: 'Ruínas',   fresh: 'Ruínas sem nome',   size: [2, 25, 9, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor da pedra' },
     phenomenon: { label: 'Fenômeno', fresh: 'Fenômeno sem nome', size: [4, 80, 16, 1],   sizeLabel: 'Alcance',  corLabel: 'Cor do fenômeno' },
+    biome:    { label: 'Bioma',    fresh: 'Bioma sem nome',    size: [1, 30, 6, 1],      sizeLabel: 'Suavidade da borda', corLabel: 'Cor do chão' },
     region:   { label: 'Região',   fresh: 'Região sem nome',   size: [0.4, 4, 1.4, 0.1], sizeLabel: 'Espessura da borda', corLabel: 'Cor da região' },
 };
 const LINHA = new Set(['river', 'road']);
-const PONTOS = new Set(['river', 'road', 'region']); // guardados como lista de pontos (linhas e polígonos)
-const DESENHO = new Set(['river', 'road', 'region', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
+const PONTOS = new Set(['river', 'road', 'region', 'biome']);
+const POLIGONO = new Set(['region', 'biome']); // áreas desenhadas por cantos // guardados como lista de pontos (linhas e polígonos)
+const DESENHO = new Set(['river', 'road', 'region', 'biome', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
 // Trocas de tipo que não perdem nada (as mesmas do servidor)
 const GRUPOS = [['city', 'village'], ['lake', 'ocean'], ['river', 'road'], ['mountain', 'island']];
 const trocasDe = (t) => GRUPOS.find((g) => g.includes(t)) || [t];
 // Tamanho máximo cresce com o mapa
 function tamanhoMax(type) {
     const base = TYPES[type].size[1];
-    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02, tower: 0.02, ruins: 0.12, phenomenon: 0.7, region: 0.01 }[type];
+    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02, tower: 0.02, ruins: 0.12, phenomenon: 0.7, region: 0.01, biome: 0.1 }[type];
     return Math.max(base, Math.round(Math.max(60, HALF) * k));
 }
-const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas', tower: 'Torres', ruins: 'Ruínas', phenomenon: 'Fenômenos', region: 'Regiões' };
+const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas', tower: 'Torres', ruins: 'Ruínas', phenomenon: 'Fenômenos', region: 'Regiões', biome: 'Biomas' };
 const HINTS = {
     select:   'Clique num lugar para abri-lo e arraste-o para mover. As bolinhas na borda esticam só para aquele lado e a vermelha gira (Shift: giro livre). Botão direito abre o menu rápido.',
     mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
@@ -64,6 +66,7 @@ const HINTS = {
     tower:    'Clique no mapa para erguer uma torre (de vigia, do mago, farol...). Clique de novo nela para aumentar.',
     ruins:    'Clique no mapa para marcar ruínas (castelo, templo, círculo de pedras...). Clique de novo dentro delas para aumentar.',
     phenomenon: 'Clique no mapa para criar um fenômeno: névoa colorida, chuva, tempestade, terremoto, nevasca ou aura mágica. O tipo e a cor ficam no painel.',
+    biome:    'Clique para marcar os cantos do bioma (deserto, tundra, pântano...) e aperte Enter para fechar. Cor, altura e ondulação do chão ficam no painel.',
     region:   'Clique para marcar os cantos da região e aperte Enter (ou Concluir) para fechar. Ela fica translúcida, e você pode ocultá-la no painel.',
     fog:      'Pinte o mapa: clique e arraste para revelar (ou cobrir) áreas para os jogadores.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
@@ -84,6 +87,7 @@ const SKINS = {
     ruins: { castelo: 'Castelo em ruínas', templo: 'Templo antigo', pedras: 'Círculo de pedras', cidade: 'Cidade perdida', arcana: 'Ruínas arcanas' },
     phenomenon: { nevoa: 'Névoa colorida', chuva: 'Chuva', tempestade: 'Tempestade', terremoto: 'Terremoto', nevasca: 'Nevasca', magia: 'Aura mágica' },
     region: { preenchida: 'Preenchida', hachurada: 'Hachurada', borda: 'Só o contorno' },
+    biome: { deserto: 'Deserto', savana: 'Savana', planicie: 'Planície', tundra: 'Tundra', neve: 'Campos de neve', pantano: 'Pântano', cinzas: 'Terras vulcânicas', mortas: 'Terras mortas', cristal: 'Planície de cristal' },
 };
 // Cor própria de cada skin (null = cor do tema: montanha ou água)
 const SKIN_COR = {
@@ -96,6 +100,7 @@ const SKIN_COR = {
     ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
     tower: { vigia: null, mago: '#5b4a9a', farol: '#b8322a', sombria: '#d0302a', elfica: '#4d7a4a' },
     ruins: { castelo: null, templo: '#d8d0bc', pedras: '#8c8a84', cidade: '#b0a48a', arcana: '#4fd1c5' },
+    biome: { deserto: '#e2c27c', savana: '#c9b25a', planicie: '#8fbf5a', tundra: '#b9c4b4', neve: '#f2f5f7', pantano: '#5d6b3a', cinzas: '#4a4240', mortas: '#7a6a58', cristal: '#9fd6e8' },
     region: { preenchida: null, hachurada: '#7a3a8a', borda: '#2f4a7a' },
     phenomenon: { nevoa: null, chuva: '#9cc0e0', tempestade: '#454c5a', terremoto: '#3a2618', nevasca: '#ffffff', magia: '#4fd1c5' },
 };
@@ -111,6 +116,7 @@ const PALETAS = {
     road: ['#8a6a44', '#a39a8a', '#93744c', '#c7ad78', '#5a4a3a', '#d8c8a8'],
     tower: ['#a8322a', '#5b4a9a', '#2f5a8a', '#4d7a4a', '#c9a23a', '#d0302a', '#3a3530', '#e8e2d2'],
     ruins: ['#a39c8c', '#d8d0bc', '#8c8a84', '#b0a48a', '#6f7f4a', '#7a6a8a', '#4fd1c5', '#c9a96e'],
+    biome: ['#e2c27c', '#c9b25a', '#8fbf5a', '#b9c4b4', '#f2f5f7', '#5d6b3a', '#4a4240', '#7a6a58', '#9fd6e8', '#c86a3a'],
     region: ['#b03a2e', '#2f4a7a', '#3f7a3a', '#c9a23a', '#7a3a8a', '#d0702a', '#1f6a6a', '#4a4136'],
     phenomenon: ['#9a6fd0', '#4fd1c5', '#e05a8a', '#6fd06f', '#e0b04a', '#9cc0e0', '#454c5a', '#ffffff'],
 };
@@ -293,7 +299,7 @@ function riverDist(f, x, z) {
 }
 
 // Locais pré-processados (skin e cor resolvidas) para o laço por vértice
-let prep = { mountains: [], islands: [], waters: [], agua: [0.5, 0.6, 0.6], oceano: false };
+let prep = { mountains: [], islands: [], waters: [], biomas: [], agua: [0.5, 0.6, 0.6], oceano: false };
 // Caixa (x0, x1, z0, z1) fora da qual o lugar não mexe no terreno: o laço por vértice pula lugares longe
 function caixa(o, alcance) {
     const F = o.F, f = o.f;
@@ -331,7 +337,25 @@ function prepare() {
             .map((f) => caixa({ f, F: forma(f), ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) }, f.type === 'ocean' ? 1.35 : 1.3)),
         agua: rgb(theme.cores.agua),
         oceano: theme.fundo === 'oceano',
+        biomas: features.filter((f) => f.type === 'biome' && (f.points || []).length > 2).map((f) => {
+            const xs = f.points.map((p) => p[0]), zs = f.points.map((p) => p[1]), m = f.size * 0.75 + 1;
+            return { f, pts: f.points, skin: skinOf(f), c: rgb(corOf(f)), suave: Math.max(1, f.size), elev: f.shape?.elevacao ?? 0, ond: f.shape?.ondulacao ?? 1, seed: (f.id || 1) * 1.7,
+                x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, z0: Math.min(...zs) - m, z1: Math.max(...zs) + m };
+        }),
     };
+}
+// Relevo próprio de cada bioma (somado ao chão, multiplicado pela ondulação)
+function relevoBioma(skin, x, z, seed) {
+    switch (skin) {
+        case 'deserto': { const d = 0.5 + 0.5 * Math.sin(x * 0.32 + Math.sin(z * 0.11 + seed) * 2.2); return d * d * 1.6; }
+        case 'savana': case 'planicie': return (Math.sin(x * 0.09 + seed) * Math.cos(z * 0.08)) * 0.7;
+        case 'tundra': return (Math.sin(x * 0.4) * Math.cos(z * 0.37 + seed)) * 0.35;
+        case 'neve': { const d = 0.5 + 0.5 * Math.sin(x * 0.18 + z * 0.12 + seed); return d * 1.1; }
+        case 'pantano': return -0.35 + Math.sin(x * 0.5) * Math.cos(z * 0.45) * 0.1;
+        case 'cinzas': case 'mortas': return Math.abs(Math.sin(x * 0.23 + seed) * Math.cos(z * 0.21)) * 1.2;
+        case 'cristal': return Math.max(0, Math.sin(x * 0.6 + seed) * Math.sin(z * 0.55)) * 0.8;
+        default: return 0;
+    }
 }
 
 function mountainHeight(m, x, z, out) {
@@ -379,6 +403,28 @@ function sample(x, z) {
     if (hm > 0.01) { o.m = sm(0.4, 3, hm); o.mc = [mr / hm, mg / hm, mb / hm]; }
     else { o.snow = 0; }
 
+    // Biomas: chão com outra cor, outra altura e relevo próprio, com borda suave
+    let bT = 0, bC = null;
+    for (const b of prep.biomas) {
+        if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) continue;
+        let d = 1e9;
+        for (let i = 0; i < b.pts.length; i++) d = Math.min(d, distSeg(x, z, b.pts[i], b.pts[(i + 1) % b.pts.length]));
+        const s = (dentroPoligono(b.pts, x, z) ? d : -d) + Math.sin(x * 0.31 + b.seed) * Math.cos(z * 0.27 - b.seed) * b.suave * 0.3;
+        if (s <= -b.suave * 0.5) continue;
+        const t = sm(-b.suave * 0.5, b.suave * 0.5, s);
+        o.h += t * (b.elev + b.ond * relevoBioma(b.skin, x, z, b.seed));
+        if (b.skin === 'neve') o.snow = Math.max(o.snow, t * 0.95);
+        else if (b.skin === 'tundra') o.snow = Math.max(o.snow, t * 0.4 * sm(0.3, 0.8, 0.5 + 0.5 * Math.sin(x * 0.21) * Math.cos(z * 0.19)));
+        if (b.skin === 'cinzas') o.lava = Math.max(o.lava, t * sm(0.93, 0.985, Math.abs(Math.sin(x * 0.17 + Math.sin(z * 0.13) * 3 + b.seed))));
+        if (b.skin === 'pantano') o.charco = Math.max(o.charco || 0, t * sm(0.45, 0.62, 0.5 + 0.5 * Math.sin(x * 0.27 + b.seed) * Math.cos(z * 0.31)));
+        if (t > bT) { bT = t; bC = b.c; }
+    }
+    if (bT > 0) {
+        const mm = o.m;
+        o.mc = mm > 0.01 ? o.mc.map((v, i) => bC[i] + (v - bC[i]) * Math.min(1, mm * 1.3)) : bC;
+        o.m = Math.max(mm, bT * 0.92);
+    }
+
     let melhor = 0;
     for (const wt of prep.waters) {
         if (fora(wt, x, z)) continue;
@@ -409,6 +455,9 @@ function sample(x, z) {
         if (peso > melhor) { melhor = peso; o.wc = wt.c; o.ws = wt.ws; }
         o.w = Math.max(o.w, amt);
     }
+
+    // poças do pântano (água rasa e escura)
+    if (o.charco > 0.05 && o.charco * 0.8 > o.w) { o.w = o.charco * 0.8; o.wc = [0.32, 0.38, 0.22]; o.ws = 3; }
 
     if (prep.oceano) {
         const r = Math.hypot(x, z) / HALF + (Math.sin(x * 0.07 + z * 0.03) + Math.cos(z * 0.06 - x * 0.045)) * 0.05;
@@ -1452,6 +1501,71 @@ function chaveNevoa() {
     const a = world?.fog?.areas || [];
     return JSON.stringify([!!world?.fog?.ativo, a.length, a[a.length - 1] || null, a[0] || null]);
 }
+// Enfeites espalhados dentro do bioma (cactos, acácias, pedras, juncos, árvores mortas, cristais...)
+function bioma(f) {
+    const pts = f.points || [];
+    if (pts.length < 3) return;
+    const skin = skinOf(f), cor = corOf(f), r = rng(f.id * 29 + 11), dens = f.shape?.densidade ?? 1;
+    const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) { const a = pts[i], b = pts[(i + 1) % pts.length]; area += a[0] * b[1] - b[0] * a[1]; }
+    area = Math.abs(area) / 2;
+    const taxa = { deserto: 0.012, savana: 0.02, planicie: 0.03, tundra: 0.015, neve: 0.008, pantano: 0.05, cinzas: 0.02, mortas: 0.02, cristal: 0.012 }[skin] ?? 0.02;
+    const n = Math.min(900, Math.round(area * taxa * dens));
+    const dentro = [];
+    for (let t = 0; t < n * 6 && dentro.length < n; t++) {
+        const x = x0 + r() * (x1 - x0), z = z0 + r() * (z1 - z0);
+        if (!dentroPoligono(pts, x, z) || distPoligono(f, x, z) < 1.5 || !visivelAgora(x, z) || aguaAt(x, z) > 0.25) continue;
+        dentro.push([x, z, heightAt(x, z)]);
+    }
+    if (!dentro.length) return;
+    const lambert = (glow) => { const m = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }); if (glow) m.emissive = new THREE.Color(glow).multiplyScalar(0.6); return m; };
+    const A = [], B = [], C = [];
+    for (const [x, z, y] of dentro) {
+        const k = 0.7 + r() * 0.6;
+        switch (skin) {
+            case 'deserto':
+                if (r() < 0.65) {
+                    A.push({ x, y, z, sx: 0.14 * k, sy: 1.1 * k, sz: 0.14 * k, c: corVar('#5f8a3a', r, 0.1) });
+                    if (r() < 0.7) A.push({ x: x + 0.12 * k, y: y + 0.45 * k, z, sx: 0.09 * k, sy: 0.45 * k, sz: 0.09 * k, rz: -0.9, c: '#5f8a3a' });
+                } else B.push({ x, y: y - 0.1, z, sx: 0.4 * k, sy: 0.25 * k, sz: 0.4 * k, ry: r() * 6, c: corVar('#b08a5a', r) });
+                break;
+            case 'savana':
+                A.push({ x, y, z, sx: 0.1 * k, sy: 1.1 * k, sz: 0.1 * k, c: '#5a3d24' });
+                B.push({ x, y: y + 1.15 * k, z, sx: 1.1 * k, sy: 0.22 * k, sz: 1.1 * k, ry: r() * 6, c: corVar('#6f8a3a', r) });
+                break;
+            case 'planicie':
+                B.push({ x, y: y + 0.15, z, sx: 0.45 * k, sy: 0.32 * k, sz: 0.45 * k, ry: r() * 6, c: corVar('#5f8f3a', r, 0.15) });
+                break;
+            case 'tundra': case 'neve':
+                if (skin === 'tundra' && r() < 0.35) {
+                    A.push({ x, y, z, sx: 0.1 * k, sy: 0.5 * k, sz: 0.1 * k, c: '#4a3a2a' });
+                    C.push({ x, y: y + 0.35 * k, z, sx: 0.5 * k, sy: 1.5 * k, sz: 0.5 * k, c: corVar('#3f5a48', r, 0.1) });
+                } else B.push({ x, y: y - 0.1, z, sx: 0.45 * k, sy: 0.3 * k, sz: 0.45 * k, ry: r() * 6, c: skin === 'neve' ? '#e8eef2' : corVar('#8a8c88', r) });
+                break;
+            case 'pantano':
+                A.push({ x, y: y - 0.1, z, sx: 0.04, sy: 0.7 + r() * 0.7, sz: 0.04, rz: (r() - 0.5) * 0.4, c: corVar('#7a8a3a', r, 0.2) });
+                if (r() < 0.08) A.push({ x, y, z, sx: 0.1, sy: 1.6 * k, sz: 0.1, c: '#4a3e30' });
+                break;
+            case 'mortas':
+                A.push({ x, y, z, sx: 0.09 * k, sy: 1.5 * k, sz: 0.09 * k, c: corVar('#5a4a3a', r, 0.1) });
+                A.push({ x, y: y + 0.9 * k, z, sx: 0.04, sy: 0.6 * k, sz: 0.04, rz: 0.8, ry: r() * 6, c: '#5a4a3a' });
+                break;
+            case 'cinzas':
+                B.push({ x, y: y - 0.1, z, sx: 0.5 * k, sy: 0.35 * k, sz: 0.5 * k, ry: r() * 6, c: corVar('#2e2a28', r, 0.1) });
+                if (r() < 0.25) C.push({ x, y: y + 0.1, z, sx: 0.12, sy: 0.12, sz: 0.12, ry: r() * 6, c: '#ff6a2a' });
+                break;
+            case 'cristal':
+                C.push({ x, y: y + 0.5 * k, z, sx: 0.3 * k, sy: 1.2 * k, sz: 0.3 * k, ry: r() * 6, rz: (r() - 0.5) * 0.5, c: corVar(cor, r, 0.25) });
+                break;
+        }
+    }
+    if (A.length) instancias(G.cyl, lambert(), A);
+    if (B.length) instancias(skin === 'planicie' || skin === 'savana' ? G.ball : G.rock, lambert(), B);
+    if (C.length) instancias(skin === 'tundra' ? G.cone : G.gem, lambert(skin === 'cristal' ? cor : skin === 'cinzas' ? '#ff6a2a' : null), C);
+}
+
 function buildProps() {
     contorno = theme.estilo !== 'natural';
     inkMat.color.set(theme.cores.tinta);
@@ -1481,6 +1595,7 @@ function construirModelo(f) {
         else if (f.type === 'ruins') ruina(f);
         else if (f.type === 'phenomenon') fenomeno(f);
         else if (f.type === 'region') regiao(f);
+        else if (f.type === 'biome') bioma(f);
     }
 }
 
@@ -1492,10 +1607,10 @@ function anchor(f) {
     if (LINHA.has(f.type) && f.points?.length) {
         const pts = rioPath(f), p = pts[Math.floor(pts.length / 2)];
         x = p[0]; z = p[1];
-    } else if (f.type === 'region' && f.points?.length) [x, z] = centroDe(f.points);
+    } else if (POLIGONO.has(f.type) && f.points?.length) [x, z] = centroDe(f.points);
     const up = f.type === 'tower' ? f.size * 4.6 * (f.shape?.altura ?? 1) + 2.5
         : f.type === 'phenomenon' ? ((8 + f.size * 0.22) * (f.shape?.altura ?? 1) + 4) * (['nevoa', 'magia', 'terremoto'].includes(skinOf(f)) ? 0.45 : 1)
-        : { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1, ruins: 4, region: 1.5 }[f.type];
+        : { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1, ruins: 4, region: 1.5, biome: 2 }[f.type];
     return new THREE.Vector3(x, heightAt(x, z) + up, z);
 }
 function labelHtml(f) {
@@ -1526,7 +1641,7 @@ function syncLabels() {
     ordemRotulos = [...labels.values()];
 }
 // Quem escolhe lugar primeiro quando dois nomes se encostam
-const PRIORIDADE_ROTULO = { city: 0, region: 1, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
+const PRIORIDADE_ROTULO = { city: 0, region: 1, biome: 2, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
 let ordemRotulos = [];
 function markSelectedLabel() {
     // Lugares sem nome (ou com o nome escondido) só mostram rótulo enquanto estão selecionados
@@ -1580,7 +1695,7 @@ function updateSelection() {
     let obj;
     if (LINHA.has(f.type)) {
         obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(rioPath(f).map((p) => lift(p[0], p[1]))), selMat);
-    } else if (f.type === 'region') {
+    } else if (POLIGONO.has(f.type)) {
         obj = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(contornoDenso(f.points || [], 1).map((p) => lift(p[0], p[1], 0.8))), selMat);
     } else {
         const F = forma(f), r = f.size * RAIO[f.type], pts = [];
@@ -1689,7 +1804,7 @@ function setTool(t) {
     if (!DESENHO.has(t)) cancelDraft();
     hintText.textContent = EDIT ? HINTS[t] : VIEW_HINT;
     finishBtn.hidden = !DESENHO.has(t);
-    finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : t === 'region' ? 'Fechar região' : 'Concluir rio';
+    finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : t === 'region' ? 'Fechar região' : t === 'biome' ? 'Fechar bioma' : 'Concluir rio';
     if (t === 'fog' && tab !== 'nevoa') { tab = 'nevoa'; renderPanel(); }
     canvas.style.cursor = t === 'select' ? 'grab' : 'crosshair';
     updateSelection();
@@ -1708,6 +1823,7 @@ function pick(e) {
 function reach(f, x, z) {
     if (LINHA.has(f.type)) return riverDist(f, x, z) / (f.size * 1.8 + 1);
     if (f.type === 'region') return dentroPoligono(f.points || [], x, z) ? 0.7 : distPoligono(f, x, z) / (f.size * 2 + 2);
+    if (f.type === 'biome') return dentroPoligono(f.points || [], x, z) ? 0.75 : distPoligono(f, x, z) / 3;
     return distN(f, x, z) / RAIO[f.type];
 }
 
@@ -1829,7 +1945,7 @@ function lugarEm(p) {
     let best = null, bestScore = 1;
     for (const f of features) {
         const rc = reach(f, p.x, p.z);
-        const s = rc - (f.type === 'city' || f.type === 'village' || f.type === 'ruins' ? 0.35 : 0) - (f.type === 'tower' ? 0.6 : 0) + (f.type === 'ocean' ? 0.5 : 0) + (f.type === 'phenomenon' ? 0.4 : 0) + (f.type === 'region' ? (f.shape?.oculta ? 0.75 : 0.45) : 0);
+        const s = rc - (f.type === 'city' || f.type === 'village' || f.type === 'ruins' ? 0.35 : 0) - (f.type === 'tower' ? 0.6 : 0) + (f.type === 'ocean' ? 0.5 : 0) + (f.type === 'phenomenon' ? 0.4 : 0) + (f.type === 'region' ? (f.shape?.oculta ? 0.75 : 0.45) : 0) + (f.type === 'biome' ? 0.55 : 0);
         if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
     }
     return best;
@@ -1946,7 +2062,7 @@ function abrirMenu(p, e, forcado = null) {
         ['maior', rio ? 'Mais largo' : 'Aumentar'],
         ['menor', rio ? 'Mais estreito' : 'Diminuir'],
         ...(tranc ? [] : [['mover', 'Mover']]),
-        ...(rio || f.type === 'region' ? [['curso', f.type === 'region' ? 'Redesenhar o contorno' : 'Redesenhar o traçado']] : []),
+        ...(rio || POLIGONO.has(f.type) ? [['curso', POLIGONO.has(f.type) ? 'Redesenhar o contorno' : 'Redesenhar o traçado']] : []),
         ...(f.type === 'region' ? [['ocultar', f.shape?.oculta ? 'Mostrar região' : 'Ocultar região']] : []),
         ['trancar', tranc ? '🔓 Destrancar' : '🔒 Trancar (não mover sem querer)'],
         ['modelos', 'Trocar modelo ▸'],
@@ -2024,7 +2140,7 @@ async function createFeature(type, x, z, extra = {}) {
 }
 async function finishRiver() {
     if (!DESENHO.has(tool)) return;
-    const poligono = tool === 'region' || (tool === 'redraw' && sel()?.type === 'region');
+    const poligono = POLIGONO.has(tool) || (tool === 'redraw' && POLIGONO.has(sel()?.type));
     if (riverDraft.length < (poligono ? 3 : 2)) { toast(poligono ? 'Marque pelo menos três cantos no mapa.' : 'Marque pelo menos dois pontos no mapa.'); return; }
     const pts = riverDraft;
     const [cx, cz] = poligono ? centroDe(pts) : pts[0];
@@ -2190,7 +2306,7 @@ async function salvarNevoa(antes, rotulo) {
     catch { world.fog = antes; desenharNevoa(); }
 }
 
-const TERRENO = new Set(['mountain', 'island', 'ocean', 'lake', 'river']);
+const TERRENO = new Set(['mountain', 'island', 'ocean', 'lake', 'river', 'biome']);
 function rebuildAll() {
     const chave = JSON.stringify([SIZE, theme.fundo, theme.cores, theme.skins,
         features.filter((f) => TERRENO.has(f.type)).map((f) => [f.id, f.type, f.x, f.z, f.size, f.skin, f.color, f.shape, f.points])]);
@@ -2350,6 +2466,13 @@ function formaHtml(f) {
     const s = f.shape || {}, F = forma(f);
     const faixa = (k, rot, min, max, step, val, fmt = (v) => v) => `<label>${rot}
         <span class="range"><input type="range" data-shape="${k}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${fmt(val)}</output></span></label>`;
+    if (f.type === 'biome') {
+        return `<h3>Formato</h3>
+            ${faixa('elevacao', 'Altura do chão (afundar ↔ elevar)', -10, 20, 0.5, s.elevacao ?? 0)}
+            ${faixa('ondulacao', 'Ondulação (dunas, montes, rachaduras)', 0, 3, 0.05, s.ondulacao ?? 1)}
+            ${faixa('densidade', 'Quantidade de enfeites (cactos, pedras, juncos...)', 0, 3, 0.05, s.densidade ?? 1)}
+            <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o contorno</button></div>`;
+    }
     if (f.type === 'region') {
         return `<h3>Formato</h3>
             <label class="wb-check"><input type="checkbox" data-shape="oculta" ${s.oculta ? 'checked' : ''}> Ocultar região (só aparece quando selecionada no editor; jogadores e público não a veem)</label>

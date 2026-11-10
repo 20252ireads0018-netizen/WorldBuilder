@@ -157,4 +157,15 @@ class NevoaPapeisTest extends TestCase
         $this->actingAs($this->dono)->putJson("/api/worlds/$id", ['theme' => ['fundo' => 'pergaminho', 'estilo' => 'pergaminho', 'cores' => ['ilha' => '#123456']]])
             ->assertOk()->assertJsonPath('world.theme.cores.ilha', '#123456');
     }
+
+    public function test_biomas(): void
+    {
+        $id = $this->mundo->id;
+        $this->postJson("/api/worlds/$id/features", ['type' => 'biome', 'x' => 0, 'z' => 0, 'size' => 6, 'points' => [[0, 0], [10, 0]]])->assertStatus(422);
+        $b = $this->postJson("/api/worlds/$id/features", ['type' => 'biome', 'x' => 3, 'z' => 3, 'size' => 6, 'skin' => 'deserto', 'color' => '#e0b070',
+            'points' => [[0, 0], [20, 0], [10, 18]], 'shape' => ['elevacao' => 4, 'ondulacao' => 2, 'densidade' => 0]])
+            ->assertCreated()->assertJsonPath('shape.elevacao', 4)->assertJsonPath('shape.densidade', 0)->json();
+        $this->putJson("/api/features/{$b['id']}", ['skin' => 'pantano', 'shape' => ['elevacao' => -3]])->assertOk()->assertJsonPath('skin', 'pantano');
+        $this->putJson("/api/features/{$b['id']}", ['shape' => ['elevacao' => 40]])->assertStatus(422);
+    }
 }

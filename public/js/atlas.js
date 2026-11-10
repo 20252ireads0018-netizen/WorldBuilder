@@ -349,6 +349,36 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         return campo.w[j * N + i] > 0.35;
     };
 
+    // Biomas: chão tingido com borda suave e símbolos do tipo de terreno
+    for (const f of lugares.filter((l) => l.type === 'biome' && (l.points || []).length > 2)) {
+        const skin = C.skinOf(f), cor = C.corOf(f), r = rng(f.id * 29 + 11);
+        const caminho = (g) => { g.beginPath(); f.points.forEach(([x, z], i) => (i ? g.lineTo(X(x), Y(z)) : g.moveTo(X(x), Y(z)))); g.closePath(); };
+        ctx.save();
+        ctx.filter = `blur(${clamp(f.size * u * 0.35, 2, 14)}px)`;
+        caminho(ctx); ctx.fillStyle = P.cor ? cor : (opt.estilo === 'noturno' ? '#c9a964' : P.tinta);
+        ctx.globalAlpha = P.cor ? 0.45 : (skin === 'neve' ? 0.04 : 0.08); ctx.fill();
+        ctx.filter = 'none'; ctx.globalAlpha = 1;
+        caminho(ctx); ctx.clip();
+        const xs = f.points.map((p) => X(p[0])), ys = f.points.map((p) => Y(p[1]));
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        const passo = 26, tinta = P.tinta;
+        ctx.strokeStyle = tinta; ctx.fillStyle = tinta; ctx.lineWidth = 1; ctx.globalAlpha = 0.55; ctx.lineCap = 'round';
+        for (let y = y0 + passo / 2; y < y1; y += passo * 0.8) for (let x = x0 + ((y / passo) % 2) * passo / 2; x < x1; x += passo) {
+            const px = x + (r() - 0.5) * passo * 0.6, py = y + (r() - 0.5) * passo * 0.5;
+            ctx.beginPath();
+            switch (skin) {
+                case 'deserto': ctx.moveTo(px - 8, py + 2); ctx.quadraticCurveTo(px - 2, py - 5, px + 6, py + 2); ctx.stroke(); break;
+                case 'savana': case 'planicie': for (const dx of [-3, 0, 3]) { ctx.moveTo(px + dx, py + 3); ctx.lineTo(px + dx * 1.6, py - 3); } ctx.stroke(); break;
+                case 'tundra': case 'neve': floco(ctx, px, py, skin === 'neve' ? 3 : 2.2); break;
+                case 'pantano': ctx.moveTo(px - 5, py + 3); ctx.lineTo(px + 5, py + 3); for (const dx of [-2, 0, 2]) { ctx.moveTo(px + dx, py + 3); ctx.lineTo(px + dx * 1.5, py - 4); } ctx.stroke(); break;
+                case 'cinzas': ctx.arc(px, py, 1.3, 0, PI2); ctx.fill(); if (r() < 0.3) { ctx.beginPath(); ctx.moveTo(px - 4, py); ctx.lineTo(px, py + 2); ctx.lineTo(px + 4, py - 1); ctx.strokeStyle = '#c0401a'; ctx.stroke(); ctx.strokeStyle = tinta; } break;
+                case 'mortas': ctx.moveTo(px, py + 4); ctx.lineTo(px, py - 5); ctx.moveTo(px, py - 1); ctx.lineTo(px - 3, py - 4); ctx.moveTo(px, py - 2); ctx.lineTo(px + 3, py - 5); ctx.stroke(); break;
+                case 'cristal': ctx.moveTo(px, py - 5); ctx.lineTo(px + 3, py); ctx.lineTo(px, py + 3); ctx.lineTo(px - 3, py); ctx.closePath(); ctx.stroke(); break;
+            }
+        }
+        ctx.restore();
+    }
+
     // Regiões marcadas pelo usuário (translúcidas, para ver o que cobrem)
     for (const f of lugares.filter((l) => l.type === 'region' && !l.shape?.oculta && (l.points || []).length > 2)) {
         const skin = C.skinOf(f), cor = P.cor ? C.corOf(f) : P.tinta;
@@ -716,6 +746,13 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                     cor = P.cor ? escurecer(C.corOf(f), 0.25) : P.tinta;
                     break;
                 }
+                case 'biome': {
+                    if (!(f.points || []).length) continue;
+                    [x, y] = ((c) => [X(c[0]), Y(c[1])])(C.centroDe(f.points));
+                    const xs = f.points.map((p) => p[0]), larg = (Math.max(...xs) - Math.min(...xs)) * u;
+                    fonte = `italic ${clamp(larg / 12, 14, 28)}px 'IM Fell English', Georgia, serif`; esp = 4;
+                    break;
+                }
                 case 'phenomenon': fonte = `italic ${clamp(13 + f.size * 0.12, 14, 22)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
                 case 'road':
                 case 'river': {
@@ -797,7 +834,7 @@ function floco(ctx, x, y, s) {
 }
 
 // Ordem de importância: quem vem antes escolhe o lugar primeiro
-const PRIORIDADE = { city: 0, region: 1, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
+const PRIORIDADE = { city: 0, region: 1, biome: 2, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
 function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
     const ocupados = [];
     const bate = (r, lista) => lista.reduce((t, o) => {
@@ -963,7 +1000,7 @@ function barraEscala(ctx, x, y, u, size, P) {
 }
 
 function legenda(ctx, xd, y, lugares, P, C) {
-    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno', region: 'Região' };
+    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno', region: 'Região', biome: 'Bioma' };
     const tipos = Object.keys(NOMES).filter((t) => lugares.some((l) => l.type === t));
     if (!tipos.length) return;
     const w = 150, h = 26 + tipos.length * 22, x = xd - w;
@@ -980,6 +1017,7 @@ function legenda(ctx, xd, y, lugares, P, C) {
         else if (t === 'forest') arvore(null, ctx, ix, yy + 5, 13, 'carvalhos', P.cor ? '#4f7a3a' : P.copa, P, r);
         else if (t === 'tower') { ctx.beginPath(); ctx.rect(ix - 3, yy - 8, 6, 15); ctx.fillStyle = P.cor ? '#d8ccb0' : P.halo; ctx.fill(); ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; ctx.stroke(); ctx.beginPath(); ctx.moveTo(ix - 5, yy - 8); ctx.lineTo(ix, yy - 15); ctx.lineTo(ix + 5, yy - 8); ctx.closePath(); ctx.fillStyle = P.cor ? '#a8322a' : P.tinta; ctx.fill(); ctx.stroke(); }
         else if (t === 'ruins') { ctx.fillStyle = P.cor ? '#a39c8c' : P.halo; ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; for (const [dx, h] of [[-7, 12], [-1, 7], [5, 10]]) { ctx.beginPath(); ctx.rect(ix + dx, yy + 6 - h, 4, h); ctx.fill(); ctx.stroke(); } }
+        else if (t === 'biome') { ctx.save(); ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; for (const [dx, dy] of [[-6, 2], [3, -3], [5, 4]]) { ctx.beginPath(); ctx.moveTo(ix + dx - 5, yy + dy + 2); ctx.quadraticCurveTo(ix + dx, yy + dy - 4, ix + dx + 5, yy + dy + 2); ctx.stroke(); } ctx.restore(); }
         else if (t === 'region') { ctx.save(); ctx.beginPath(); ctx.moveTo(ix - 10, yy - 6); ctx.lineTo(ix + 8, yy - 8); ctx.lineTo(ix + 10, yy + 6); ctx.lineTo(ix - 8, yy + 7); ctx.closePath(); ctx.fillStyle = P.cor ? 'rgba(176,58,46,.25)' : 'rgba(0,0,0,.08)'; ctx.fill(); ctx.setLineDash([4, 2]); ctx.strokeStyle = P.cor ? '#b03a2e' : P.tinta; ctx.lineWidth = 1.4; ctx.stroke(); ctx.restore(); }
         else if (t === 'phenomenon') nuvem(ctx, ix, yy + 2, 10, P.cor ? '#c9b8e8' : P.halo, P.tinta);
         else {
@@ -1184,6 +1222,7 @@ function lugarEm(sx, sy) {
     if (Math.abs(x) > C.HALF || Math.abs(z) > C.HALF) return null;
     let melhor = null, nota = 1;
     for (const f of lugares) {
+        if (f.type === 'biome') { if (f.points?.length > 2 && C.dentroPoligono(f.points, x, z) && nota > 0.95) { melhor = f; nota = 0.95; } continue; }
         if (f.type === 'region') { if (!f.shape?.oculta && f.points?.length > 2 && C.dentroPoligono(f.points, x, z) && nota > 0.9) { melhor = f; nota = 0.9; } continue; }
         const d = f.type === 'river' ? C.riverDist(f, x, z) / (f.size * 2 + 2) : C.distN(f, x, z) / (f.type === 'city' || f.type === 'village' ? 1.3 : 1);
         const s = d + (f.type === 'ocean' ? 0.5 : 0) - (f.type === 'city' || f.type === 'village' ? 0.3 : 0);

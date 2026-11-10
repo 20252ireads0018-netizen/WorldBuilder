@@ -73,6 +73,9 @@
         <button type="button" class="tool" data-tool="phenomenon">
             <svg viewBox="0 0 24 24"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 8a3.5 3.5 0 0 1 0 7zM8 18l-1 3M12 18l-1 3M16 18l-1 3M13 10l-2 3h3l-2 3"/></svg>Fenômeno
         </button>
+        <button type="button" class="tool" data-tool="biome">
+            <svg viewBox="0 0 24 24"><path d="M3 18c3-4 5-4 8-1s5 3 10-2M3 13c2-2 4-2 6 0M14 9c2-2 4-2 6 0"/><circle cx="17" cy="5" r="2"/></svg>Bioma
+        </button>
         <button type="button" class="tool" data-tool="region">
             <svg viewBox="0 0 24 24"><path d="M4 6l7-3 9 4-2 10-8 4-6-6z" stroke-dasharray="3 2"/><path d="M9 11h6M9 14h4"/></svg>Região
         </button>

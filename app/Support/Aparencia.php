@@ -8,18 +8,18 @@ namespace App\Support;
  */
 final class Aparencia
 {
-    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road', 'tower', 'ruins', 'phenomenon', 'region'];
+    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road', 'tower', 'ruins', 'phenomenon', 'region', 'biome'];
 
     /** Tipos desenhados como linha (pontos): rios e estradas. */
     public const LINHAS = ['river', 'road'];
 
     /** Tipos guardados como lista de pontos: linhas (rios, estradas) e polígonos (regiões). */
-    public const COM_PONTOS = ['river', 'road', 'region'];
+    public const COM_PONTOS = ['river', 'road', 'region', 'biome'];
 
     /** Mínimo de pontos de cada tipo com pontos. */
     public static function minPontos(string $tipo): int
     {
-        return $tipo === 'region' ? 3 : 2;
+        return in_array($tipo, ['region', 'biome'], true) ? 3 : 2;
     }
 
     /** Trocas de tipo permitidas sem refazer o lugar. */
@@ -48,6 +48,7 @@ final class Aparencia
         'ruins' => ['castelo', 'templo', 'pedras', 'cidade', 'arcana'],
         'phenomenon' => ['nevoa', 'chuva', 'tempestade', 'terremoto', 'nevasca', 'magia'],
         'region' => ['preenchida', 'hachurada', 'borda'],
+        'biome' => ['deserto', 'savana', 'planicie', 'tundra', 'neve', 'pantano', 'cinzas', 'mortas', 'cristal'],
     ];
 
     public const COR = '/^#[0-9a-fA-F]{6}$/';
@@ -172,10 +173,12 @@ final class Aparencia
             'shape.irregular' => 'nullable|numeric|between:0,1',
             'shape.curvas' => 'nullable|numeric|between:0,1',
             'shape.altura' => 'nullable|numeric|between:0.2,3',
-            'shape.densidade' => 'nullable|numeric|between:0.2,3',
+            'shape.densidade' => 'nullable|numeric|between:0,3',
             'shape.semNome' => 'nullable|boolean',
             'shape.trancado' => 'nullable|boolean',
             'shape.oculta' => 'nullable|boolean',
+            'shape.elevacao' => 'nullable|numeric|between:-10,20',
+            'shape.ondulacao' => 'nullable|numeric|between:0,3',
         ];
     }
 
@@ -191,7 +194,7 @@ final class Aparencia
                 $shape[$k] = 1;
             }
         }
-        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0, 'altura' => 1.0, 'densidade' => 1.0, 'semNome' => 0.0, 'trancado' => 0.0, 'oculta' => 0.0] as $k => $padrao) {
+        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0, 'altura' => 1.0, 'densidade' => 1.0, 'semNome' => 0.0, 'trancado' => 0.0, 'oculta' => 0.0, 'elevacao' => 0.0, 'ondulacao' => 1.0] as $k => $padrao) {
             if (isset($shape[$k]) && is_numeric($shape[$k]) && (float) $shape[$k] !== $padrao) {
                 $out[$k] = round((float) $shape[$k], 3);
             }

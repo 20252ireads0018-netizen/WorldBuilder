@@ -87,7 +87,7 @@ class WorldbuilderApiController extends Controller
         $nevoa = $world->nevoa();
         if (! $editor && $nevoa['ativo']) {
             $features = $features->filter(function (Feature $f) use ($nevoa) {
-                if ($f->type === 'region') {
+                if (in_array($f->type, ['region', 'biome'], true)) {
                     return collect($f->points ?? [])->contains(fn ($p) => World::pontoVisivel($nevoa, $p[0], $p[1]))
                         || World::pontoVisivel($nevoa, $f->x, $f->z);
                 }
@@ -296,7 +296,7 @@ class WorldbuilderApiController extends Controller
 
         $linha = in_array($data['type'], Aparencia::COM_PONTOS, true);
         if ($linha && count($data['points'] ?? []) < Aparencia::minPontos($data['type'])) {
-            abort(422, ['road' => 'Uma estrada precisa de pelo menos dois pontos.', 'river' => 'Um rio precisa de pelo menos dois pontos.', 'region' => 'Uma região precisa de pelo menos três pontos.'][$data['type']]);
+            abort(422, ['road' => 'Uma estrada precisa de pelo menos dois pontos.', 'river' => 'Um rio precisa de pelo menos dois pontos.', 'region' => 'Uma região precisa de pelo menos três pontos.', 'biome' => 'Um bioma precisa de pelo menos três pontos.'][$data['type']]);
         }
         if (! $linha) {
             $data['points'] = null;
