@@ -349,6 +349,25 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         return campo.w[j * N + i] > 0.35;
     };
 
+    // Regiões marcadas pelo usuário (translúcidas, para ver o que cobrem)
+    for (const f of lugares.filter((l) => l.type === 'region' && !l.shape?.oculta && (l.points || []).length > 2)) {
+        const skin = C.skinOf(f), cor = P.cor ? C.corOf(f) : P.tinta;
+        const caminho = () => { ctx.beginPath(); f.points.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z)))); ctx.closePath(); };
+        ctx.save();
+        if (skin === 'preenchida') { caminho(); ctx.fillStyle = cor; ctx.globalAlpha = 0.2; ctx.fill(); }
+        else if (skin === 'hachurada') {
+            caminho(); ctx.save(); ctx.clip();
+            const xs = f.points.map((p) => X(p[0])), ys = f.points.map((p) => Y(p[1]));
+            const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+            ctx.strokeStyle = cor; ctx.globalAlpha = 0.4; ctx.lineWidth = 1.3;
+            for (let d = x0 - (y1 - y0); d < x1; d += 8) { ctx.beginPath(); ctx.moveTo(d, y1); ctx.lineTo(d + (y1 - y0), y0); ctx.stroke(); }
+            ctx.restore();
+        }
+        caminho(); ctx.globalAlpha = 0.85; ctx.strokeStyle = cor; ctx.lineWidth = Math.max(1.4, f.size * 1.3); ctx.lineJoin = 'round';
+        ctx.setLineDash(skin === 'borda' ? [9, 6] : [14, 4, 2, 4]); ctx.stroke();
+        ctx.restore();
+    }
+
     // Rios (afinam na nascente, engrossam na foz)
     for (const f of lugares.filter((l) => l.type === 'river')) {
         const pts = C.rioPath(f); if (pts.length < 2) continue;
@@ -652,8 +671,17 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
     };
     ctx.restore(); // clip do mapa
 
-    // Rótulos
+    // Rótulos: cada nome procura um lugar livre perto do seu ponto (sem cobrir outros nomes nem os desenhos principais)
     if (opt.nomes) {
+        const rotulos = [], obstaculos = [];
+        for (const f of lugares) {
+            if (!visivel(f.x, f.z)) continue;
+            const x = X(f.x), y = Y(f.z), k = f.size * u;
+            if (f.type === 'city') obstaculos.push([x - clamp(k * 0.55, 20, 52) * 0.6, y - clamp(k * 0.55, 20, 52) * 0.9, clamp(k * 0.55, 20, 52) * 1.2, clamp(k * 0.55, 20, 52)]);
+            else if (f.type === 'village') obstaculos.push([x - 9, y - 12, 18, 14]);
+            else if (f.type === 'tower') { const h = clamp(k * 1.6 * (f.shape?.altura ?? 1), 18, 52); obstaculos.push([x - h * 0.2, y - h * 1.45, h * 0.4, h * 1.45]); }
+            else if (f.type === 'mountain') { const h = clamp(k * 0.6, 14, 90); obstaculos.push([x - h * 0.6, y - h, h * 1.2, h]); }
+        }
         for (const f of lugares) {
             if (f.shape?.semNome || !f.name) continue;
             if (!visivel(f.x, f.z) && !(f.points && f.points.some(([x, z]) => visivel(x, z)))) continue;
@@ -680,6 +708,14 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                 case 'island': fonte = `italic ${clamp(13 + f.size * 0.15, 14, 24)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
                 case 'tower': fonte = `600 ${clamp(12 + f.size, 13, 18)}px Cinzel, Georgia, serif`; y += 14; esp = 0.5; break;
                 case 'ruins': fonte = `italic ${clamp(12 + f.size * 0.2, 13, 19)}px 'IM Fell English', Georgia, serif`; y += clamp(f.size * u / 9, 3, 14) + 12; esp = 1; break;
+                case 'region': {
+                    if (f.shape?.oculta || !(f.points || []).length) continue;
+                    [x, y] = ((c) => [X(c[0]), Y(c[1])])(C.centroDe(f.points));
+                    const xs = f.points.map((p) => p[0]), larg = (Math.max(...xs) - Math.min(...xs)) * u;
+                    fonte = `600 ${clamp(larg / 14, 14, 30)}px Cinzel, Georgia, serif`; esp = 3;
+                    cor = P.cor ? escurecer(C.corOf(f), 0.25) : P.tinta;
+                    break;
+                }
                 case 'phenomenon': fonte = `italic ${clamp(13 + f.size * 0.12, 14, 22)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
                 case 'road':
                 case 'river': {
@@ -693,11 +729,9 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                 }
                 default: continue;
             }
-            ctx.font = fonte;
-            const meia = Math.min(S / 2 - 10, ctx.measureText(f.name).width / 2 + esp * f.name.length / 2 + 12);
-            if (!ang) x = clamp(x, mx + meia, mx + S - meia);
-            texto(ctx, f.name, x, y, fonte, cor, P.halo, esp, ang, T === 'city' || T === 'village' ? 4 : 3.2);
+            rotulos.push({ f, x, y, ang, fonte, cor, esp, T, nome: T === 'region' ? f.name.toUpperCase() : f.name });
         }
+        posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo: P.halo });
     }
 
     // Moldura, título, rosa-dos-ventos, escala e legenda
@@ -760,6 +794,56 @@ function floco(ctx, x, y, s) {
     ctx.beginPath();
     for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI; ctx.moveTo(x - Math.cos(a) * s, y - Math.sin(a) * s); ctx.lineTo(x + Math.cos(a) * s, y + Math.sin(a) * s); }
     ctx.stroke();
+}
+
+// Ordem de importância: quem vem antes escolhe o lugar primeiro
+const PRIORIDADE = { city: 0, region: 1, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
+function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
+    const ocupados = [];
+    const bate = (r, lista) => lista.reduce((t, o) => {
+        const ix = Math.min(r[0] + r[2], o[0] + o[2]) - Math.max(r[0], o[0]), iy = Math.min(r[1] + r[3], o[1] + o[3]) - Math.max(r[1], o[1]);
+        return t + (ix > 0 && iy > 0 ? ix * iy : 0);
+    }, 0);
+    rotulos.sort((a, b) => (PRIORIDADE[a.T] ?? 9) - (PRIORIDADE[b.T] ?? 9));
+    for (const r of rotulos) {
+        const tam0 = parseFloat(r.fonte.match(/(\d+(?:\.\d+)?)px/)[1]);
+        let melhor = null;
+        for (const escala of [1, 0.86, 0.74]) {
+            const tam = Math.round(tam0 * escala * 10) / 10, fonte = r.fonte.replace(/\d+(?:\.\d+)?px/, tam + 'px');
+            ctx.font = fonte;
+            const esp = r.esp * escala;
+            // nomes longos quebram em duas linhas (menos em rios e estradas, que seguem o traçado)
+            const nome = r.nome || r.f.name;
+            let linhas = [nome];
+            const largura = (s) => ctx.measureText(s).width + esp * (s.length - 1);
+            if (!r.ang && largura(nome) > Math.max(170, tam * 11) && nome.includes(' ')) {
+                const meio = nome.length / 2;
+                let corte = -1;
+                for (let i = 0; i < nome.length; i++) if (nome[i] === ' ' && (corte < 0 || Math.abs(i - meio) < Math.abs(corte - meio))) corte = i;
+                linhas = [nome.slice(0, corte), nome.slice(corte + 1)];
+            }
+            const w = Math.max(...linhas.map(largura)) + 6, lh = tam * 1.12, h = lh * linhas.length + 2;
+            const bw = r.ang ? Math.abs(w * Math.cos(r.ang)) + Math.abs(h * Math.sin(r.ang)) : w, bh = r.ang ? Math.abs(w * Math.sin(r.ang)) + Math.abs(h * Math.cos(r.ang)) : h;
+            const passos = r.ang ? [[0, 0], [0, -h], [0, h], [bw * 0.5, 0], [-bw * 0.5, 0]]
+                : [[0, 0], [0, h * 0.9], [0, -h * 0.9], [0, h * 1.8], [0, -h * 1.8], [w * 0.55, 0], [-w * 0.55, 0], [w * 0.55, h], [-w * 0.55, h], [w * 0.55, -h], [-w * 0.55, -h], [0, h * 2.7], [0, -h * 2.7]];
+            for (const [dx, dy] of passos) {
+                let x = r.x + dx, y = r.y + dy;
+                x = clamp(x, mx + bw / 2 + 4, mx + S - bw / 2 - 4); y = clamp(y, my + bh / 2 + 4, my + S - bh / 2 - 4);
+                const caixa = [x - bw / 2, y - bh / 2, bw, bh];
+                const sobre = bate(caixa, ocupados), cobre = bate(caixa, obstaculos);
+                const custo = sobre * 4 + cobre + Math.hypot(dx, dy) * 0.6 + (1 - escala) * 400;
+                const achou = sobre === 0 && cobre === 0;
+                if (!melhor || achou || custo < melhor.custo) melhor = { custo, x, y, fonte, esp, linhas, lh, caixa, livre: sobre === 0, achou };
+                if (achou) break; // primeiro lugar totalmente livre, o mais perto do ponto
+            }
+            if (melhor.achou) break;
+        }
+        // rios e estradas só ganham nome se houver espaço livre; os outros ficam no melhor lugar achado
+        if (!melhor.livre && (r.T === 'river' || r.T === 'road')) continue;
+        ocupados.push(melhor.caixa);
+        const lw = r.T === 'city' || r.T === 'region' ? 5 : 4.2;
+        melhor.linhas.forEach((s, i) => texto(ctx, s, melhor.x, melhor.y + (i - (melhor.linhas.length - 1) / 2) * melhor.lh, melhor.fonte, r.cor, halo, melhor.esp, r.ang, lw));
+    }
 }
 
 function texto(ctx, s, x, y, fonte, cor, halo, esp, ang, lw) {
@@ -879,7 +963,7 @@ function barraEscala(ctx, x, y, u, size, P) {
 }
 
 function legenda(ctx, xd, y, lugares, P, C) {
-    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno' };
+    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha', tower: 'Torre', ruins: 'Ruínas', phenomenon: 'Fenômeno', region: 'Região' };
     const tipos = Object.keys(NOMES).filter((t) => lugares.some((l) => l.type === t));
     if (!tipos.length) return;
     const w = 150, h = 26 + tipos.length * 22, x = xd - w;
@@ -896,6 +980,7 @@ function legenda(ctx, xd, y, lugares, P, C) {
         else if (t === 'forest') arvore(null, ctx, ix, yy + 5, 13, 'carvalhos', P.cor ? '#4f7a3a' : P.copa, P, r);
         else if (t === 'tower') { ctx.beginPath(); ctx.rect(ix - 3, yy - 8, 6, 15); ctx.fillStyle = P.cor ? '#d8ccb0' : P.halo; ctx.fill(); ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; ctx.stroke(); ctx.beginPath(); ctx.moveTo(ix - 5, yy - 8); ctx.lineTo(ix, yy - 15); ctx.lineTo(ix + 5, yy - 8); ctx.closePath(); ctx.fillStyle = P.cor ? '#a8322a' : P.tinta; ctx.fill(); ctx.stroke(); }
         else if (t === 'ruins') { ctx.fillStyle = P.cor ? '#a39c8c' : P.halo; ctx.strokeStyle = P.tinta; ctx.lineWidth = 1; for (const [dx, h] of [[-7, 12], [-1, 7], [5, 10]]) { ctx.beginPath(); ctx.rect(ix + dx, yy + 6 - h, 4, h); ctx.fill(); ctx.stroke(); } }
+        else if (t === 'region') { ctx.save(); ctx.beginPath(); ctx.moveTo(ix - 10, yy - 6); ctx.lineTo(ix + 8, yy - 8); ctx.lineTo(ix + 10, yy + 6); ctx.lineTo(ix - 8, yy + 7); ctx.closePath(); ctx.fillStyle = P.cor ? 'rgba(176,58,46,.25)' : 'rgba(0,0,0,.08)'; ctx.fill(); ctx.setLineDash([4, 2]); ctx.strokeStyle = P.cor ? '#b03a2e' : P.tinta; ctx.lineWidth = 1.4; ctx.stroke(); ctx.restore(); }
         else if (t === 'phenomenon') nuvem(ctx, ix, yy + 2, 10, P.cor ? '#c9b8e8' : P.halo, P.tinta);
         else {
             ctx.fillStyle = P.agua; ctx.strokeStyle = P.tinta;
@@ -1099,6 +1184,7 @@ function lugarEm(sx, sy) {
     if (Math.abs(x) > C.HALF || Math.abs(z) > C.HALF) return null;
     let melhor = null, nota = 1;
     for (const f of lugares) {
+        if (f.type === 'region') { if (!f.shape?.oculta && f.points?.length > 2 && C.dentroPoligono(f.points, x, z) && nota > 0.9) { melhor = f; nota = 0.9; } continue; }
         const d = f.type === 'river' ? C.riverDist(f, x, z) / (f.size * 2 + 2) : C.distN(f, x, z) / (f.type === 'city' || f.type === 'village' ? 1.3 : 1);
         const s = d + (f.type === 'ocean' ? 0.5 : 0) - (f.type === 'city' || f.type === 'village' ? 0.3 : 0);
         if (d <= 1 && s < nota) { melhor = f; nota = s; }

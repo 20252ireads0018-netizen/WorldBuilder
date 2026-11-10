@@ -130,8 +130,8 @@ final class MundoArquivo
     /** Lugar no formato do arquivo (com NPCs, lojas e itens): usado na importação e no Desfazer de uma exclusão. */
     public static function criarLugar(World $world, array $f): ?Feature
     {
-        $linha = in_array($f['type'], Aparencia::LINHAS, true);
-        if ($linha && count($f['points'] ?? []) < 2) {
+        $linha = in_array($f['type'], Aparencia::COM_PONTOS, true);
+        if ($linha && count($f['points'] ?? []) < Aparencia::minPontos($f['type'])) {
             return null;
         }
         $skin = $f['skin'] ?? null;

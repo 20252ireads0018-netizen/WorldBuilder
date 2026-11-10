@@ -73,6 +73,9 @@
         <button type="button" class="tool" data-tool="phenomenon">
             <svg viewBox="0 0 24 24"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 8a3.5 3.5 0 0 1 0 7zM8 18l-1 3M12 18l-1 3M16 18l-1 3M13 10l-2 3h3l-2 3"/></svg>Fenômeno
         </button>
+        <button type="button" class="tool" data-tool="region">
+            <svg viewBox="0 0 24 24"><path d="M4 6l7-3 9 4-2 10-8 4-6-6z" stroke-dasharray="3 2"/><path d="M9 11h6M9 14h4"/></svg>Região
+        </button>
         <button type="button" class="tool" data-tool="fog">
             <svg viewBox="0 0 24 24"><path d="M4 10h13a3 3 0 1 0-3-3M3 14h17M6 18h11a3 3 0 1 1-3 3"/></svg>Névoa
         </button>

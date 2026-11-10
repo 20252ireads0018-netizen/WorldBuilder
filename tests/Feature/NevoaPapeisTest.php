@@ -140,4 +140,21 @@ class NevoaPapeisTest extends TestCase
         $this->putJson("/api/worlds/$id", ['theme' => ['fundo' => 'pergaminho', 'estilo' => 'pergaminho', 'skins' => ['phenomenon' => 'chuva', 'tower' => 'mago']]])
             ->assertOk();
     }
+
+    public function test_regioes_trava_e_cor_das_ilhas(): void
+    {
+        $id = $this->mundo->id;
+        $this->putJson("/api/worlds/$id/fog", ['ativo' => false, 'areas' => []])->assertOk();
+        $this->postJson("/api/worlds/$id/features", ['type' => 'region', 'name' => 'Reino', 'x' => 0, 'z' => 0, 'size' => 1, 'points' => [[0, 0], [10, 0]]])->assertStatus(422);
+        $r = $this->postJson("/api/worlds/$id/features", ['type' => 'region', 'name' => 'Reino', 'x' => 3, 'z' => 3, 'size' => 1, 'points' => [[0, 0], [10, 0], [5, 9]], 'skin' => 'hachurada'])
+            ->assertCreated()->json();
+        $this->putJson("/api/features/{$r['id']}", ['shape' => ['oculta' => true, 'trancado' => true]])->assertOk()
+            ->assertJsonPath('shape.oculta', 1)->assertJsonPath('shape.trancado', 1);
+        $nomes = array_column($this->actingAs($this->jogador)->getJson("/api/worlds/$id/data")->json('features'), 'name');
+        $this->assertNotContains('Reino', $nomes);
+        $nomes = array_column($this->actingAs($this->mestre)->getJson("/api/worlds/$id/data")->json('features'), 'name');
+        $this->assertContains('Reino', $nomes);
+        $this->actingAs($this->dono)->putJson("/api/worlds/$id", ['theme' => ['fundo' => 'pergaminho', 'estilo' => 'pergaminho', 'cores' => ['ilha' => '#123456']]])
+            ->assertOk()->assertJsonPath('world.theme.cores.ilha', '#123456');
+    }
 }

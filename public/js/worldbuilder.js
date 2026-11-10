@@ -34,19 +34,21 @@ const TYPES = {
     tower:    { label: 'Torre',    fresh: 'Torre sem nome',    size: [1.5, 10, 3.5, 0.5],     sizeLabel: 'Tamanho',  corLabel: 'Cor do telhado e detalhes' },
     ruins:    { label: 'Ruínas',   fresh: 'Ruínas sem nome',   size: [2, 25, 9, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor da pedra' },
     phenomenon: { label: 'Fenômeno', fresh: 'Fenômeno sem nome', size: [4, 80, 16, 1],   sizeLabel: 'Alcance',  corLabel: 'Cor do fenômeno' },
+    region:   { label: 'Região',   fresh: 'Região sem nome',   size: [0.4, 4, 1.4, 0.1], sizeLabel: 'Espessura da borda', corLabel: 'Cor da região' },
 };
 const LINHA = new Set(['river', 'road']);
-const DESENHO = new Set(['river', 'road', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
+const PONTOS = new Set(['river', 'road', 'region']); // guardados como lista de pontos (linhas e polígonos)
+const DESENHO = new Set(['river', 'road', 'region', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
 // Trocas de tipo que não perdem nada (as mesmas do servidor)
 const GRUPOS = [['city', 'village'], ['lake', 'ocean'], ['river', 'road'], ['mountain', 'island']];
 const trocasDe = (t) => GRUPOS.find((g) => g.includes(t)) || [t];
 // Tamanho máximo cresce com o mapa
 function tamanhoMax(type) {
     const base = TYPES[type].size[1];
-    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02, tower: 0.02, ruins: 0.12, phenomenon: 0.7 }[type];
+    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02, tower: 0.02, ruins: 0.12, phenomenon: 0.7, region: 0.01 }[type];
     return Math.max(base, Math.round(Math.max(60, HALF) * k));
 }
-const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas', tower: 'Torres', ruins: 'Ruínas', phenomenon: 'Fenômenos' };
+const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas', tower: 'Torres', ruins: 'Ruínas', phenomenon: 'Fenômenos', region: 'Regiões' };
 const HINTS = {
     select:   'Clique num lugar para abri-lo e arraste-o para mover. As bolinhas na borda esticam só para aquele lado e a vermelha gira (Shift: giro livre). Botão direito abre o menu rápido.',
     mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
@@ -62,6 +64,7 @@ const HINTS = {
     tower:    'Clique no mapa para erguer uma torre (de vigia, do mago, farol...). Clique de novo nela para aumentar.',
     ruins:    'Clique no mapa para marcar ruínas (castelo, templo, círculo de pedras...). Clique de novo dentro delas para aumentar.',
     phenomenon: 'Clique no mapa para criar um fenômeno: névoa colorida, chuva, tempestade, terremoto, nevasca ou aura mágica. O tipo e a cor ficam no painel.',
+    region:   'Clique para marcar os cantos da região e aperte Enter (ou Concluir) para fechar. Ela fica translúcida, e você pode ocultá-la no painel.',
     fog:      'Pinte o mapa: clique e arraste para revelar (ou cobrir) áreas para os jogadores.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
 };
@@ -80,18 +83,20 @@ const SKINS = {
     tower: { vigia: 'Torre de vigia', mago: 'Torre do mago', farol: 'Farol', sombria: 'Torre sombria', elfica: 'Torre élfica' },
     ruins: { castelo: 'Castelo em ruínas', templo: 'Templo antigo', pedras: 'Círculo de pedras', cidade: 'Cidade perdida', arcana: 'Ruínas arcanas' },
     phenomenon: { nevoa: 'Névoa colorida', chuva: 'Chuva', tempestade: 'Tempestade', terremoto: 'Terremoto', nevasca: 'Nevasca', magia: 'Aura mágica' },
+    region: { preenchida: 'Preenchida', hachurada: 'Hachurada', borda: 'Só o contorno' },
 };
 // Cor própria de cada skin (null = cor do tema: montanha ou água)
 const SKIN_COR = {
     mountain: { classica: null, picos: null, vulcao: '#4b3b36', colinas: '#7f9a56', rochosa: '#7c7468', cristal: '#6d5a8a' },
     lake: { calma: null, cristalina: null, congelada: '#cfe6ef', pantano: '#5d6b3a', lava: '#e2561c' },
     forest: { carvalhos: null, pinheiros: '#2f5a3a', outono: '#c86a28', morta: '#6a5a48', magica: '#3fc6b0' },
-    island: { verde: '#7fa65a', areia: '#e3cf92', tropical: '#9cc95a', vulcanica: '#4d4240', gelo: '#e6edf2' },
+    island: { verde: null, areia: '#e3cf92', tropical: '#9cc95a', vulcanica: '#4d4240', gelo: '#e6edf2' },
     road: { terra: null, pedra: '#a39a8a', trilha: '#93744c', real: '#c7ad78' },
     city: { medieval: null, elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
     ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
     tower: { vigia: '#a8322a', mago: '#5b4a9a', farol: '#b8322a', sombria: '#d0302a', elfica: '#4d7a4a' },
     ruins: { castelo: '#a39c8c', templo: '#d8d0bc', pedras: '#8c8a84', cidade: '#b0a48a', arcana: '#4fd1c5' },
+    region: { preenchida: '#b03a2e', hachurada: '#7a3a8a', borda: '#2f4a7a' },
     phenomenon: { nevoa: '#9a6fd0', chuva: '#9cc0e0', tempestade: '#454c5a', terremoto: '#3a2618', nevasca: '#ffffff', magia: '#4fd1c5' },
 };
 SKIN_COR.river = SKIN_COR.lake;
@@ -106,6 +111,7 @@ const PALETAS = {
     road: ['#8a6a44', '#a39a8a', '#93744c', '#c7ad78', '#5a4a3a', '#d8c8a8'],
     tower: ['#a8322a', '#5b4a9a', '#2f5a8a', '#4d7a4a', '#c9a23a', '#d0302a', '#3a3530', '#e8e2d2'],
     ruins: ['#a39c8c', '#d8d0bc', '#8c8a84', '#b0a48a', '#6f7f4a', '#7a6a8a', '#4fd1c5', '#c9a96e'],
+    region: ['#b03a2e', '#2f4a7a', '#3f7a3a', '#c9a23a', '#7a3a8a', '#d0702a', '#1f6a6a', '#4a4136'],
     phenomenon: ['#9a6fd0', '#4fd1c5', '#e05a8a', '#6fd06f', '#e0b04a', '#9cc0e0', '#454c5a', '#ffffff'],
 };
 PALETAS.river = PALETAS.ocean = PALETAS.lake;
@@ -115,7 +121,8 @@ const WS = { calma: 0, cristalina: 1, congelada: 2, pantano: 3, lava: 4, mar: 5,
 
 const FUNDOS = { pergaminho: 'Pergaminho', oceano: 'Ilha no oceano', noite: 'Céu noturno', nevoa: 'Névoa', cor: 'Cor sólida' };
 const ESTILOS = { pergaminho: 'Pergaminho', natural: 'Natural', ilustrado: 'Ilustrado' };
-const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', floresta: 'Florestas', telhado: 'Telhados', estrada: 'Estradas', tinta: 'Tinta e contornos' };
+const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', floresta: 'Florestas', telhado: 'Telhados', estrada: 'Estradas', ilha: 'Ilhas', tinta: 'Tinta e contornos' };
+const COR_PADRAO = { floresta: '#4f7a3a', telhado: '#9a4a2c', estrada: '#8a6a44', ilha: '#7fa65a' };
 const TEMAS = {
     pergaminho: { label: 'Pergaminho antigo', fundo: 'pergaminho', estilo: 'pergaminho', cores: { fundo: '#2a1c10', terra: '#e3c47e', montanha: '#9a7b52', agua: '#7f9f93', tinta: '#4d3017' } },
     verde:      { label: 'Terras verdes',     fundo: 'oceano',     estilo: 'natural',    cores: { fundo: '#1d4e6e', terra: '#7fa65a', montanha: '#7d6a58', agua: '#3f86a8', tinta: '#2c3a24' } },
@@ -147,6 +154,7 @@ function corOf(f) {
     if (f.type === 'forest') return theme.cores.floresta || '#4f7a3a';
     if (f.type === 'city' || f.type === 'village') return theme.cores.telhado || '#9a4a2c';
     if (f.type === 'road') return theme.cores.estrada || '#8a6a44';
+    if (f.type === 'island') return theme.cores.ilha || '#7fa65a';
     return '#888888';
 }
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
@@ -1291,6 +1299,103 @@ function fenomeno(f) {
     }
 }
 
+/* ---------- Regiões: polígonos marcados pelo usuário, translúcidos, que podem ficar ocultos ---------- */
+function dentroPoligono(pts, x, z) {
+    let d = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, zi] = pts[i], [xj, zj] = pts[j];
+        if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) d = !d;
+    }
+    return d;
+}
+function distPoligono(f, x, z) {
+    const p = f.points || [];
+    let m = Infinity;
+    for (let i = 0; i < p.length; i++) m = Math.min(m, distSeg(x, z, p[i], p[(i + 1) % p.length]));
+    return m;
+}
+// Contorno fechado com pontos a cada ~1 unidade (para acompanhar o relevo)
+function contornoDenso(pts, passo = 1) {
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / passo));
+        for (let j = 0; j < n; j++) out.push([a[0] + ((b[0] - a[0]) * j) / n, a[1] + ((b[1] - a[1]) * j) / n]);
+    }
+    return out;
+}
+const centroDe = (pts) => [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+let texListras = null;
+function listrasTex() {
+    if (texListras) return texListras;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 32;
+    const x = cv.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, 32, 32);
+    x.strokeStyle = '#fff'; x.lineWidth = 7;
+    for (let d = -32; d <= 64; d += 16) { x.beginPath(); x.moveTo(d, 0); x.lineTo(d + 32, 32); x.stroke(); }
+    texListras = new THREE.CanvasTexture(cv);
+    texListras.wrapS = texListras.wrapT = THREE.RepeatWrapping;
+    return texListras;
+}
+function regiao(f) {
+    const pts = f.points || [];
+    if (pts.length < 3 || f.shape?.oculta) return;
+    const skin = skinOf(f), cor = corOf(f);
+    if (skin !== 'borda') {
+        // preenchimento: células da grade que caem dentro do polígono, acompanhando o relevo
+        const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+        const passo = Math.max(1, SIZE / 170), nx = Math.ceil((x1 - x0) / passo) + 1, nz = Math.ceil((z1 - z0) / passo) + 1;
+        const pos = [], uv = [], idx = [], id = new Int32Array(nx * nz).fill(-1);
+        const vert = (i, j) => {
+            const k = j * nx + i;
+            if (id[k] < 0) {
+                const x = Math.min(x1, x0 + i * passo), z = Math.min(z1, z0 + j * passo);
+                id[k] = pos.length / 3;
+                pos.push(x, Math.max(heightAt(x, z), 0) + 0.35, z);
+                uv.push(x / (6 * K), z / (6 * K));
+            }
+            return id[k];
+        };
+        for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+            const cx = x0 + (i + 0.5) * passo, cz = z0 + (j + 0.5) * passo;
+            if (!dentroPoligono(pts, cx, cz) || !visivelAgora(cx, cz)) continue;
+            const a = vert(i, j), b = vert(i + 1, j), c = vert(i + 1, j + 1), d = vert(i, j + 1);
+            idx.push(a, c, b, a, d, c);
+        }
+        if (idx.length) {
+            const g = new THREE.BufferGeometry();
+            g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+            g.setIndex(idx);
+            const m = new THREE.MeshBasicMaterial({ color: cor, transparent: true, opacity: skin === 'hachurada' ? 0.5 : 0.3, depthWrite: false, side: THREE.DoubleSide,
+                polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+            if (skin === 'hachurada') m.alphaMap = listrasTex();
+            const me = new THREE.Mesh(g, m);
+            me.renderOrder = 3;
+            proprio(me);
+        }
+    }
+    // borda: faixa em volta (tracejada no modelo "só o contorno")
+    const borda = contornoDenso(pts, 1), w = Math.max(0.25, f.size * 0.45), pos = [], idx = [];
+    for (let i = 0; i < borda.length; i++) {
+        if (skin === 'borda' && Math.floor(i / 3) % 2) continue;
+        const a = borda[i], b = borda[(i + 1) % borda.length];
+        if (!visivelAgora(a[0], a[1])) continue;
+        const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = (-dz / l) * w / 2, nz = (dx / l) * w / 2, k = pos.length / 3;
+        for (const [x, z] of [[a[0] + nx, a[1] + nz], [a[0] - nx, a[1] - nz], [b[0] + nx, b[1] + nz], [b[0] - nx, b[1] - nz]]) pos.push(x, Math.max(heightAt(x, z), 0) + 0.45, z);
+        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    }
+    if (idx.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setIndex(idx);
+        const me = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#' + new THREE.Color(cor).multiplyScalar(0.75).getHexString(), transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide,
+            polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 }));
+        me.renderOrder = 4;
+        proprio(me);
+    }
+}
+
 function buildProps() {
     props.children.forEach((c) => {
         if (c.isInstancedMesh) { c.material.dispose(); c.dispose?.(); }
@@ -1308,6 +1413,7 @@ function buildProps() {
         else if (f.type === 'tower') torre(f);
         else if (f.type === 'ruins') ruina(f);
         else if (f.type === 'phenomenon') fenomeno(f);
+        else if (f.type === 'region') regiao(f);
     }
 }
 
@@ -1319,10 +1425,10 @@ function anchor(f) {
     if (LINHA.has(f.type) && f.points?.length) {
         const pts = rioPath(f), p = pts[Math.floor(pts.length / 2)];
         x = p[0]; z = p[1];
-    }
+    } else if (f.type === 'region' && f.points?.length) [x, z] = centroDe(f.points);
     const up = f.type === 'tower' ? f.size * 4.6 * (f.shape?.altura ?? 1) + 2.5
         : f.type === 'phenomenon' ? ((8 + f.size * 0.22) * (f.shape?.altura ?? 1) + 4) * (['nevoa', 'magia', 'terremoto'].includes(skinOf(f)) ? 0.45 : 1)
-        : { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1, ruins: 4 }[f.type];
+        : { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1, ruins: 4, region: 1.5 }[f.type];
     return new THREE.Vector3(x, heightAt(x, z) + up, z);
 }
 function labelHtml(f) {
@@ -1339,7 +1445,7 @@ function syncLabels() {
     labelsEl.innerHTML = '';
     labels.clear();
     for (const f of features) {
-        if ((f.shape?.semNome || !f.name) && f.id !== selectedId) continue;
+        if ((f.shape?.semNome || !f.name || f.shape?.oculta) && f.id !== selectedId) continue;
         const a = anchor(f);
         if (!visivelAgora(a.x, a.z)) continue;
         const el = document.createElement('div');
@@ -1351,7 +1457,7 @@ function syncLabels() {
 }
 function markSelectedLabel() {
     // Lugares sem nome (ou com o nome escondido) só mostram rótulo enquanto estão selecionados
-    if (features.some((f) => f.shape?.semNome || !f.name)) { syncLabels(); return; }
+    if (features.some((f) => f.shape?.semNome || !f.name || f.shape?.oculta)) { syncLabels(); return; }
     labels.forEach(({ el, f }) => el.classList.toggle('sel', f.id === selectedId));
 }
 const tmp = new THREE.Vector3();
@@ -1385,6 +1491,8 @@ function updateSelection() {
     let obj;
     if (LINHA.has(f.type)) {
         obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(rioPath(f).map((p) => lift(p[0], p[1]))), selMat);
+    } else if (f.type === 'region') {
+        obj = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(contornoDenso(f.points || [], 1).map((p) => lift(p[0], p[1], 0.8))), selMat);
     } else {
         const F = forma(f), r = f.size * RAIO[f.type], pts = [];
         for (let i = 0; i < 120; i++) {
@@ -1396,7 +1504,7 @@ function updateSelection() {
     }
     obj.renderOrder = 10;
     selGroup.add(obj);
-    if (EDIT && tool === 'select' && !LINHA.has(f.type)) {
+    if (EDIT && tool === 'select' && !PONTOS.has(f.type) && !f.shape?.trancado) {
         const al = alcas(f);
         const pts = al.filter((a) => a.k !== 'giro' && f.type !== 'tower').map((a) => lift(a.x, a.z, 1));
         const g1 = new THREE.Points(new THREE.BufferGeometry().setFromPoints(pts), alcaMat);
@@ -1422,7 +1530,7 @@ function alcas(f) {
 }
 function alcaEm(e) {
     const f = sel();
-    if (!f || !EDIT || tool !== 'select' || LINHA.has(f.type)) return null;
+    if (!f || !EDIT || tool !== 'select' || PONTOS.has(f.type) || f.shape?.trancado) return null;
     const r = canvas.getBoundingClientRect();
     let melhor = null, dm = 13;
     for (const a of alcas(f)) {
@@ -1486,12 +1594,13 @@ const hintText = $('#hint-text');
 const finishBtn = $('#finish-river');
 
 function setTool(t) {
+    if (t === 'move' && sel()?.shape?.trancado) { toast(`${nomeDe(sel())} está trancado. Destranque no painel ou no botão direito para mover.`); t = 'select'; }
     tool = t;
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
     if (!DESENHO.has(t)) cancelDraft();
     hintText.textContent = EDIT ? HINTS[t] : VIEW_HINT;
     finishBtn.hidden = !DESENHO.has(t);
-    finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : 'Concluir rio';
+    finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : t === 'region' ? 'Fechar região' : 'Concluir rio';
     if (t === 'fog' && tab !== 'nevoa') { tab = 'nevoa'; renderPanel(); }
     canvas.style.cursor = t === 'select' ? 'grab' : 'crosshair';
     updateSelection();
@@ -1509,10 +1618,11 @@ function pick(e) {
 }
 function reach(f, x, z) {
     if (LINHA.has(f.type)) return riverDist(f, x, z) / (f.size * 1.8 + 1);
+    if (f.type === 'region') return dentroPoligono(f.points || [], x, z) ? 0.7 : distPoligono(f, x, z) / (f.size * 2 + 2);
     return distN(f, x, z) / RAIO[f.type];
 }
 
-let down = null, ultimoDown = null, arrasto = null, pintando = null, arrastoT = 0, puxando = null;
+let down = null, ultimoDown = null, arrasto = null, pintando = null, arrastoT = 0, puxando = null, tentouTrancado = null;
 const noMapa = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
 canvas.addEventListener('pointerdown', (e) => {
     down = ultimoDown = { x: e.clientX, y: e.clientY };
@@ -1535,7 +1645,8 @@ canvas.addEventListener('pointerdown', (e) => {
     }
     // Arrastar o lugar já selecionado leva ele junto
     const f = tool === 'select' ? lugarEm(p) : null;
-    if (f && f.id === selectedId) {
+    if (f && f.id === selectedId && f.shape?.trancado) { tentouTrancado = f; }
+    else if (f && f.id === selectedId) {
         arrasto = { f, p0: p, x0: f.x, z0: f.z, pts0: f.points ? f.points.map((q) => [...q]) : null, moveu: false };
         controls.enabled = false;
         canvas.style.cursor = 'grabbing';
@@ -1605,6 +1716,10 @@ canvas.addEventListener('pointerup', async (e) => {
             return;
         }
     }
+    if (tentouTrancado) {
+        const tt = tentouTrancado; tentouTrancado = null;
+        if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) toast(`🔒 ${nomeDe(tt)} está trancado (a câmera girou no lugar dele).`);
+    }
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     down = null;
@@ -1625,7 +1740,7 @@ function lugarEm(p) {
     let best = null, bestScore = 1;
     for (const f of features) {
         const rc = reach(f, p.x, p.z);
-        const s = rc - (f.type === 'city' || f.type === 'village' || f.type === 'ruins' ? 0.35 : 0) - (f.type === 'tower' ? 0.6 : 0) + (f.type === 'ocean' ? 0.5 : 0) + (f.type === 'phenomenon' ? 0.4 : 0);
+        const s = rc - (f.type === 'city' || f.type === 'village' || f.type === 'ruins' ? 0.35 : 0) - (f.type === 'tower' ? 0.6 : 0) + (f.type === 'ocean' ? 0.5 : 0) + (f.type === 'phenomenon' ? 0.4 : 0) + (f.type === 'region' ? (f.shape?.oculta ? 0.75 : 0.45) : 0);
         if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
     }
     return best;
@@ -1711,10 +1826,10 @@ function registrarCriacao(f) {
 }
 
 async function duplicarLugar(f) {
-    const desl = Math.max(4, LINHA.has(f.type) ? 6 : f.size * 1.6);
+    const desl = Math.max(4, PONTOS.has(f.type) ? 6 : f.size * 1.6);
     const cl = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const extra = { skin: f.skin, color: f.color, shape: f.shape, secret: f.secret, size: f.size, description: f.description };
-    if (LINHA.has(f.type)) extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
+    if (PONTOS.has(f.type)) extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
     const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name ? f.name + ' (cópia)' : '', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
     features.push(novo);
     rebuildAll();
@@ -1735,14 +1850,16 @@ function abrirMenu(p, e, forcado = null) {
     if (!f) { fecharMenu(); return; }
     if (!EDIT) { select(f.id); return; }
     menuAlvo = f;
-    const T = TYPES[f.type], rio = LINHA.has(f.type);
+    const T = TYPES[f.type], rio = LINHA.has(f.type), tranc = !!f.shape?.trancado;
     const itens = [
         ['abrir', 'Abrir e editar'],
         ['renomear', 'Renomear…'],
         ['maior', rio ? 'Mais largo' : 'Aumentar'],
         ['menor', rio ? 'Mais estreito' : 'Diminuir'],
-        ['mover', 'Mover'],
-        ...(rio ? [['curso', 'Redesenhar o traçado']] : []),
+        ...(tranc ? [] : [['mover', 'Mover']]),
+        ...(rio || f.type === 'region' ? [['curso', f.type === 'region' ? 'Redesenhar o contorno' : 'Redesenhar o traçado']] : []),
+        ...(f.type === 'region' ? [['ocultar', f.shape?.oculta ? 'Mostrar região' : 'Ocultar região']] : []),
+        ['trancar', tranc ? '🔓 Destrancar' : '🔒 Trancar (não mover sem querer)'],
         ['modelos', 'Trocar modelo ▸'],
         ...trocasDe(f.type).filter((t) => t !== f.type).map((t) => ['tipo:' + t, 'Transformar em ' + TYPES[t].label.toLowerCase()]),
         ['duplicar', 'Duplicar ao lado'],
@@ -1793,6 +1910,8 @@ menuEl.addEventListener('click', async (e) => {
         case 'curso': select(f.id); setTool('redraw'); break;
         case 'duplicar': await duplicarLugar(f); break;
         case 'segredo': await atualizarLugar(f, { secret: !f.secret }, { rebuild: false, rotulo: 'segredo de ' + nomeDe(f) }); break;
+        case 'trancar': await alternarShape(f, 'trancado'); break;
+        case 'ocultar': await alternarShape(f, 'oculta'); break;
         case 'excluir': await excluirLugar(f); break;
     }
 });
@@ -1816,16 +1935,26 @@ async function createFeature(type, x, z, extra = {}) {
 }
 async function finishRiver() {
     if (!DESENHO.has(tool)) return;
-    if (riverDraft.length < 2) { toast('Marque pelo menos dois pontos no mapa.'); return; }
+    const poligono = tool === 'region' || (tool === 'redraw' && sel()?.type === 'region');
+    if (riverDraft.length < (poligono ? 3 : 2)) { toast(poligono ? 'Marque pelo menos três cantos no mapa.' : 'Marque pelo menos dois pontos no mapa.'); return; }
     const pts = riverDraft;
+    const [cx, cz] = poligono ? centroDe(pts) : pts[0];
     cancelDraft();
     if (tool === 'redraw') {
         const f = sel();
         setTool('select');
-        if (f) await atualizarLugar(f, { points: pts, x: pts[0][0], z: pts[0][1] }, { rotulo: 'traçado de ' + nomeDe(f) });
+        if (f) await atualizarLugar(f, { points: pts, x: Math.round(cx * 100) / 100, z: Math.round(cz * 100) / 100 }, { rotulo: 'traçado de ' + nomeDe(f) });
         return;
     }
-    await createFeature(tool, pts[0][0], pts[0][1], { points: pts });
+    await createFeature(tool, Math.round(cx * 100) / 100, Math.round(cz * 100) / 100, { points: pts });
+}
+// Liga/desliga uma opção do formato (trancado, oculta...) guardando no Ctrl+Z
+async function alternarShape(f, chave) {
+    const shape = { ...(f.shape || {}) };
+    if (shape[chave]) delete shape[chave]; else shape[chave] = 1;
+    await atualizarLugar(f, { shape: Object.keys(shape).length ? shape : null }, { rotulo: ({ trancado: shape[chave] ? 'trancar ' : 'destrancar ', oculta: shape[chave] ? 'ocultar ' : 'mostrar ' }[chave] || '') + nomeDe(f) });
+    toast(chave === 'trancado' ? (shape[chave] ? `${nomeDe(f)} está trancado: não sai do lugar ao arrastar.` : `${nomeDe(f)} foi destrancado.`)
+        : (shape[chave] ? `${nomeDe(f)} está oculta: só aparece quando selecionada no editor.` : `${nomeDe(f)} está visível de novo.`));
 }
 async function moveSelected(p) {
     const f = sel();
@@ -1833,10 +1962,10 @@ async function moveSelected(p) {
     if (!f) return;
     const clamp = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const body = { x: p.x, z: p.z };
-    if (LINHA.has(f.type)) {
+    if (PONTOS.has(f.type)) {
         const dx = p.x - f.x, dz = p.z - f.z;
         body.points = f.points.map(([x, z]) => [clamp(x + dx), clamp(z + dz)]);
-        body.x = body.points[0][0]; body.z = body.points[0][1];
+        if (LINHA.has(f.type)) { body.x = body.points[0][0]; body.z = body.points[0][1]; }
     }
     await atualizarLugar(f, body, { rotulo: 'mover ' + nomeDe(f) });
 }
@@ -1846,7 +1975,12 @@ document.addEventListener('keydown', (e) => {
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
     if (EDIT && mod && k === 'z' && !e.shiftKey) { e.preventDefault(); desfazer(); return; }
     if (EDIT && mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); refazer(); return; }
-    if (EDIT && (e.key === 'Delete' || e.key === 'Backspace') && sel() && !arrasto) { e.preventDefault(); excluirLugar(sel()); return; }
+    if (EDIT && (e.key === 'Delete' || e.key === 'Backspace') && sel() && !arrasto) {
+        e.preventDefault();
+        if (sel().shape?.trancado && !confirm(`${nomeDe(sel())} está trancado. Excluir mesmo assim?`)) return;
+        excluirLugar(sel());
+        return;
+    }
     if (e.key === 'Escape') { fecharMenu(); setTool('select'); }
     if (e.key === 'Enter') finishRiver();
 });
@@ -2109,6 +2243,11 @@ function formaHtml(f) {
     const s = f.shape || {}, F = forma(f);
     const faixa = (k, rot, min, max, step, val, fmt = (v) => v) => `<label>${rot}
         <span class="range"><input type="range" data-shape="${k}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${fmt(val)}</output></span></label>`;
+    if (f.type === 'region') {
+        return `<h3>Formato</h3>
+            <label class="wb-check"><input type="checkbox" data-shape="oculta" ${s.oculta ? 'checked' : ''}> Ocultar região (só aparece quando selecionada no editor; jogadores e público não a veem)</label>
+            <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o contorno</button></div>`;
+    }
     if (LINHA.has(f.type)) {
         return `<h3>Formato</h3>
             ${faixa('curvas', f.type === 'road' ? 'Curvas' : 'Curvas (meandros)', 0, 1, 0.05, s.curvas ?? 0)}
@@ -2133,7 +2272,7 @@ function chips(nome, opcoes, atual, attrs = '') {
 function aparenciaHtml() {
     const temas = Object.entries(TEMAS).map(([k, t]) => `<button type="button" class="tema" data-act="tema" data-k="${k}">
         <span class="amostra">${['fundo', 'terra', 'montanha', 'agua'].map((c) => `<i style="background:${t.cores[c]}"></i>`).join('')}</span>${esc(t.label)}</button>`).join('');
-    const cores = Object.entries(CORES).map(([k, l]) => `<label class="cor">${l}<input type="color" data-cor="${k}" value="${theme.cores[k]}"></label>`).join('');
+    const cores = Object.entries(CORES).map(([k, l]) => `<label class="cor">${l}<input type="color" data-cor="${k}" value="${theme.cores[k] || COR_PADRAO[k] || '#888888'}"></label>`).join('');
     const skins = Object.keys(TYPES).map((t) => `<label>${PLURAL[t]}
         <select data-skin-padrao="${t}">${Object.entries(SKINS[t]).map(([k, l]) => `<option value="${k}" ${theme.skins[t] === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`).join('');
     return `<h3>Temas prontos</h3><div class="temas">${temas}</div>
@@ -2234,11 +2373,12 @@ function lugarEditor(f) {
             <summary>Formato</summary>
             ${formaHtml(f).replace('<h3>Formato</h3>', '')}
             <label class="wb-check"><input type="checkbox" data-shape="semNome" ${f.shape?.semNome ? 'checked' : ''}> Esconder o nome no mapa</label>
+            <label class="wb-check"><input type="checkbox" data-shape="trancado" ${f.shape?.trancado ? 'checked' : ''}> 🔒 Trancado: não se move nem muda de formato arrastando no mapa</label>
             <label class="wb-check"><input type="checkbox" data-field="secret" ${f.secret ? 'checked' : ''}> Secreto: escondido dos jogadores e do público</label>
         </details>
 
         <div class="linha">
-            <button type="button" data-act="mover">Mover</button>
+            <button type="button" data-act="mover" ${f.shape?.trancado ? 'disabled title="Destranque para mover"' : ''}>Mover</button>
             <button type="button" data-act="duplicar">Duplicar</button>
             <button type="button" class="danger" data-act="del-feature">Excluir ${T.label.toLowerCase()}</button>
         </div>
@@ -2433,7 +2573,10 @@ panel.addEventListener('click', async (e) => {
             setTool('redraw');
             return;
         case 'forma-padrao':
-            await atualizarLugar(f, { shape: null }, { rotulo: 'formato de ' + nomeDe(f) });
+            {
+                const fica = Object.fromEntries(Object.entries(f.shape || {}).filter(([k]) => ['semNome', 'trancado', 'oculta'].includes(k)));
+                await atualizarLugar(f, { shape: Object.keys(fica).length ? fica : null }, { rotulo: 'formato de ' + nomeDe(f) });
+            }
             return;
         case 'skin':
             await atualizarLugar(f, { skin: btn.dataset.k || null }, { rotulo: 'modelo de ' + nomeDe(f) });
@@ -2458,7 +2601,7 @@ panel.addEventListener('click', async (e) => {
             if (act === 'fog-tudo') world.fog = { ativo: true, areas: [[0, 0, SIZE, 1]] };
             else if (act === 'fog-nada') world.fog = { ativo: true, areas: [] };
             else if (f) {
-                const r = LINHA.has(f.type) ? null : f.size * Math.max(forma(f).sx, forma(f).sz) * 1.25 + 2;
+                const r = PONTOS.has(f.type) ? null : f.size * Math.max(forma(f).sx, forma(f).sz) * 1.25 + 2;
                 world.fog.ativo = true;
                 if (r) world.fog.areas.push([f.x, f.z, Math.min(600, r), 1]);
                 else (f.points || []).forEach(([x, z]) => world.fog.areas.push([x, z, f.size * 3 + 3, 1]));
@@ -2526,7 +2669,7 @@ function abrirAtlas() {
     window.WBAtlas.abrir({
         world, theme, features, EDIT, SIZE, HALF, TYPES, SKINS,
         nevoa: world.fog, soJogador: !EDIT, nomeDe,
-        sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf,
+        sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf, dentroPoligono, centroDe,
         comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
         baixar3D: baixarVista3D,
     });

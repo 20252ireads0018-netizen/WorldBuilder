@@ -78,11 +78,19 @@ class WorldbuilderApiController extends Controller
             $q->where('secret', false);
         }
         $features = $q->get();
+        if (! $editor) {
+            // regiões marcadas como ocultas não aparecem para jogadores nem para o público
+            $features = $features->reject(fn (Feature $f) => $f->type === 'region' && ! empty($f->shape['oculta']))->values();
+        }
 
         // Névoa de guerra: quem não é mestre só recebe o que já foi revelado
         $nevoa = $world->nevoa();
         if (! $editor && $nevoa['ativo']) {
             $features = $features->filter(function (Feature $f) use ($nevoa) {
+                if ($f->type === 'region') {
+                    return collect($f->points ?? [])->contains(fn ($p) => World::pontoVisivel($nevoa, $p[0], $p[1]))
+                        || World::pontoVisivel($nevoa, $f->x, $f->z);
+                }
                 if (in_array($f->type, Aparencia::LINHAS, true)) {
                     $pts = array_values(array_filter($f->points ?? [], fn ($p) => World::pontoVisivel($nevoa, $p[0], $p[1])));
                     if (count($pts) < 2) {
@@ -286,9 +294,9 @@ class WorldbuilderApiController extends Controller
         $data['shape'] = Aparencia::formato($data['shape'] ?? null);
         $data['name'] = trim((string) ($data['name'] ?? '')); // lugar sem nome é permitido
 
-        $linha = in_array($data['type'], Aparencia::LINHAS, true);
-        if ($linha && count($data['points'] ?? []) < 2) {
-            abort(422, ($data['type'] === 'road' ? 'Uma estrada' : 'Um rio') . ' precisa de pelo menos dois pontos.');
+        $linha = in_array($data['type'], Aparencia::COM_PONTOS, true);
+        if ($linha && count($data['points'] ?? []) < Aparencia::minPontos($data['type'])) {
+            abort(422, ['road' => 'Uma estrada precisa de pelo menos dois pontos.', 'river' => 'Um rio precisa de pelo menos dois pontos.', 'region' => 'Uma região precisa de pelo menos três pontos.'][$data['type']]);
         }
         if (! $linha) {
             $data['points'] = null;
@@ -319,7 +327,10 @@ class WorldbuilderApiController extends Controller
             $data['name'] = trim((string) $data['name']);
         }
         $tipo = $data['type'] ?? $feature->type;
-        if (isset($data['points']) && ! in_array($tipo, Aparencia::LINHAS, true)) {
+        if (isset($data['points']) && count($data['points']) < Aparencia::minPontos($tipo)) {
+            abort(422, 'Faltam pontos no traçado.');
+        }
+        if (isset($data['points']) && ! in_array($tipo, Aparencia::COM_PONTOS, true)) {
             unset($data['points']);
         }
         // Trocou o tipo: o modelo antigo pode não existir no novo

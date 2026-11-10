@@ -717,3 +717,5 @@ body.atlas-on { overflow: hidden; }
 .wb .label.tower { font-size: 15px; letter-spacing: .04em; }
 .wb .label.ruins { font-style: italic; font-size: 15px; opacity: .92; }
 .wb .label.phenomenon { font-style: italic; font-size: 15px; letter-spacing: .05em; }
+
+.wb .label.region { font-family: Cinzel, Georgia, serif; text-transform: uppercase; letter-spacing: .14em; font-size: 15px; opacity: .92; }

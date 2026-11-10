@@ -8,10 +8,19 @@ namespace App\Support;
  */
 final class Aparencia
 {
-    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road', 'tower', 'ruins', 'phenomenon'];
+    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road', 'tower', 'ruins', 'phenomenon', 'region'];
 
     /** Tipos desenhados como linha (pontos): rios e estradas. */
     public const LINHAS = ['river', 'road'];
+
+    /** Tipos guardados como lista de pontos: linhas (rios, estradas) e polígonos (regiões). */
+    public const COM_PONTOS = ['river', 'road', 'region'];
+
+    /** Mínimo de pontos de cada tipo com pontos. */
+    public static function minPontos(string $tipo): int
+    {
+        return $tipo === 'region' ? 3 : 2;
+    }
 
     /** Trocas de tipo permitidas sem refazer o lugar. */
     public const GRUPOS = [['city', 'village'], ['lake', 'ocean'], ['river', 'road'], ['mountain', 'island']];
@@ -20,7 +29,7 @@ final class Aparencia
 
     public const ESTILOS = ['pergaminho', 'natural', 'ilustrado'];
 
-    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta', 'floresta', 'telhado', 'estrada'];
+    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta', 'floresta', 'telhado', 'estrada', 'ilha'];
 
     private const AGUA = ['calma', 'cristalina', 'congelada', 'pantano', 'lava'];
     private const POVOADO = ['medieval', 'elfica', 'deserto', 'nordica', 'fortaleza', 'oriental', 'ruinas'];
@@ -38,6 +47,7 @@ final class Aparencia
         'tower' => ['vigia', 'mago', 'farol', 'sombria', 'elfica'],
         'ruins' => ['castelo', 'templo', 'pedras', 'cidade', 'arcana'],
         'phenomenon' => ['nevoa', 'chuva', 'tempestade', 'terremoto', 'nevasca', 'magia'],
+        'region' => ['preenchida', 'hachurada', 'borda'],
     ];
 
     public const COR = '/^#[0-9a-fA-F]{6}$/';
@@ -56,6 +66,7 @@ final class Aparencia
                 'floresta' => '#4f7a3a',
                 'telhado' => '#9a4a2c',
                 'estrada' => '#8a6a44',
+                'ilha' => '#7fa65a',
             ],
             'skins' => array_map(fn (array $s) => $s[0], self::SKINS),
         ];
@@ -146,6 +157,8 @@ final class Aparencia
             'shape.altura' => 'nullable|numeric|between:0.2,3',
             'shape.densidade' => 'nullable|numeric|between:0.2,3',
             'shape.semNome' => 'nullable|boolean',
+            'shape.trancado' => 'nullable|boolean',
+            'shape.oculta' => 'nullable|boolean',
         ];
     }
 
@@ -156,10 +169,12 @@ final class Aparencia
             return null;
         }
         $out = [];
-        if (! empty($shape['semNome'])) {
-            $shape['semNome'] = 1;
+        foreach (['semNome', 'trancado', 'oculta'] as $k) {
+            if (! empty($shape[$k])) {
+                $shape[$k] = 1;
+            }
         }
-        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0, 'altura' => 1.0, 'densidade' => 1.0, 'semNome' => 0.0] as $k => $padrao) {
+        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0, 'altura' => 1.0, 'densidade' => 1.0, 'semNome' => 0.0, 'trancado' => 0.0, 'oculta' => 0.0] as $k => $padrao) {
             if (isset($shape[$k]) && is_numeric($shape[$k]) && (float) $shape[$k] !== $padrao) {
                 $out[$k] = round((float) $shape[$k], 3);
             }
