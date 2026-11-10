@@ -1,0 +1,207 @@
+/* Worldbuilder: pergaminho antigo. Tudo fica dentro de .wb para não vazar para o resto do painel. */
+.wb {
+    --paper: #e7d3a2;
+    --paper-2: #dcc48c;
+    --ink: #35240f;
+    --ink-soft: #6b5129;
+    --seal: #8a2d1c;
+    --water: #2f5650;
+    --walnut: #22160b;
+    --walnut-2: #2e1e0f;
+    background: var(--walnut);
+    color: var(--ink);
+    font-family: 'IM Fell English', Georgia, 'Times New Roman', serif;
+    font-size: 17px;
+    line-height: 1.5;
+}
+.wb *, .wb *::before, .wb *::after { box-sizing: border-box; }
+body.wb { margin: 0; }
+.wb h1, .wb h2, .wb h3, .wb p { margin: 0; font-family: inherit; }
+.wb .mut { color: var(--ink-soft); }
+.wb .error { color: var(--seal); }
+
+/* ---------- Controles ---------- */
+.wb input, .wb textarea, .wb select {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    background: rgba(255, 248, 225, .55);
+    border: 1px solid var(--ink-soft);
+    border-radius: 2px;
+    padding: 6px 8px;
+}
+.wb input:focus-visible, .wb textarea:focus-visible, .wb select:focus-visible,
+.wb button:focus-visible, .wb a:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+.wb label { display: block; font-size: 15px; color: var(--ink-soft); margin-top: 10px; }
+.wb label > input, .wb label > textarea { margin-top: 3px; color: var(--ink); font-size: 17px; }
+.wb button, .wb .btn {
+    font: inherit;
+    font-size: 16px;
+    cursor: pointer;
+    border: 1px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    padding: 6px 12px;
+    border-radius: 2px;
+    text-decoration: none;
+    display: inline-block;
+    box-shadow: none;
+    text-transform: none;
+    letter-spacing: normal;
+}
+.wb button:hover, .wb .btn:hover { background: rgba(53, 36, 15, .1); }
+.wb button.primary, .wb .btn.primary { background: var(--ink); color: var(--paper); }
+.wb button.primary:hover, .wb .btn.primary:hover { background: #4b3418; }
+.wb button.danger { border-color: var(--seal); color: var(--seal); }
+.wb button.danger:hover { background: rgba(138, 45, 28, .1); }
+
+/* ---------- Lista de mundos ---------- */
+.wb-pagina { min-height: 70vh; }
+.wb .shelf { max-width: 860px; margin: 0 auto; padding: 48px 20px 80px; }
+.wb .shelf-head { margin-bottom: 28px; color: var(--paper); }
+.wb .shelf-head h1 { font-size: 46px; font-style: italic; letter-spacing: .02em; color: var(--paper); }
+.wb .shelf-head p { color: #c9b27c; font-size: 19px; }
+.wb .card {
+    background: var(--paper);
+    border: 1px solid #8a6b3a;
+    box-shadow: 0 0 0 4px var(--paper-2) inset;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+}
+.wb .card h2 { font-size: 24px; margin-bottom: 4px; color: var(--ink); }
+.wb .new-world .linha { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.wb .new-world .linha form { margin: 0; }
+.wb .world { display: flex; justify-content: space-between; gap: 20px; align-items: center; }
+.wb .world .actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+.wb .world .actions form { margin: 0; }
+.wb .empty { color: #c9b27c; }
+.wb .aviso { background: var(--paper-2); border: 1px solid #8a6b3a; padding: 8px 12px; margin-bottom: 18px; }
+@media (max-width: 640px) {
+    .wb .shelf { padding: 28px 16px 60px; }
+    .wb .shelf-head h1 { font-size: 34px; }
+    .wb .world { flex-direction: column; align-items: flex-start; }
+}
+
+/* ---------- Editor ---------- */
+body.wb-editor { height: 100vh; overflow: hidden; }
+.wb #app { display: grid; grid-template-columns: 88px 1fr 370px; height: 100vh; }
+.wb #tools {
+    background: var(--walnut-2);
+    border-right: 1px solid #4a3319;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.wb #tools .back { color: #c9b27c; text-align: center; font-size: 14px; padding: 6px 0 12px; text-decoration: none; }
+.wb #tools .back:hover { color: var(--paper); }
+.wb .tool {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 9px 2px; font-size: 14px;
+    color: var(--paper); border-color: transparent;
+}
+.wb .tool:hover { background: rgba(231, 211, 162, .12); }
+.wb .tool.active { background: var(--paper); color: var(--ink); }
+.wb .tool svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+.wb #stage { position: relative; overflow: hidden; background: #2a1c10; }
+.wb #gl { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.wb #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.wb .label {
+    position: absolute; transform: translate(-50%, -50%);
+    white-space: nowrap; text-align: center; color: var(--ink);
+    text-shadow: 0 0 3px var(--paper), 0 0 7px var(--paper), 0 0 12px var(--paper);
+}
+.wb .label small { display: block; font-size: 12px; color: var(--ink-soft); }
+.wb .label.mountain { font-style: italic; letter-spacing: .08em; font-size: 17px; }
+.wb .label.lake { font-style: italic; letter-spacing: .16em; color: var(--water); font-size: 16px; }
+.wb .label.river { font-style: italic; color: var(--water); font-size: 14px; }
+.wb .label.city { font-size: 21px; letter-spacing: .03em; }
+.wb .label.village { font-size: 15px; }
+.wb .label.sel { color: var(--seal); }
+
+.wb #title {
+    position: absolute; top: 14px; left: 16px;
+    font-size: 24px; font-style: italic; color: var(--paper);
+    text-shadow: 0 1px 4px #000;
+    pointer-events: none;
+}
+.wb #hint {
+    position: absolute; left: 14px; bottom: 14px; max-width: min(560px, calc(100% - 28px));
+    background: var(--paper); border: 1px solid #8a6b3a;
+    padding: 8px 12px; font-size: 15px;
+    display: flex; gap: 12px; align-items: center;
+}
+.wb #toast {
+    position: absolute; top: 14px; right: 14px; max-width: 320px;
+    background: var(--seal); color: #f6e7c4; padding: 8px 12px; font-size: 15px;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.wb #toast.show { opacity: 1; }
+
+/* ---------- Painel lateral ---------- */
+.wb #panel {
+    background: var(--paper);
+    border-left: 3px double var(--ink);
+    overflow-y: auto;
+    padding: 20px 20px 40px;
+}
+.wb #panel h2 { font-size: 26px; margin-bottom: 6px; }
+.wb #panel h3 { font-size: 20px; margin: 22px 0 6px; padding-top: 12px; border-top: 1px dashed var(--ink-soft); display: flex; justify-content: space-between; align-items: baseline; }
+.wb #panel h3 small { font-size: 14px; color: var(--ink-soft); font-weight: normal; }
+.wb #panel .kind { color: var(--seal); font-style: italic; font-size: 16px; }
+.wb #panel .help p { margin-top: 10px; }
+.wb .range { display: flex; gap: 10px; align-items: center; }
+.wb .range input { padding: 0; }
+.wb .range output { min-width: 34px; text-align: right; color: var(--ink); }
+.wb .head .danger { margin-top: 14px; }
+.wb .list { list-style: none; margin: 0; padding: 0; }
+.wb .list > li {
+    display: flex; justify-content: space-between; gap: 8px; align-items: flex-start;
+    padding: 6px 0; border-bottom: 1px dotted rgba(107, 81, 41, .45);
+}
+.wb .list .x { padding: 0 8px; line-height: 1.3; border-color: transparent; color: var(--seal); font-size: 20px; }
+.wb .price { color: var(--seal); white-space: nowrap; }
+.wb .shop { display: block !important; padding: 8px 0 10px !important; }
+.wb .shop-head { display: flex; justify-content: space-between; align-items: center; }
+.wb .shop .list { margin: 4px 0 4px 14px; }
+.wb form.mini { display: grid; gap: 6px; margin-top: 8px; }
+.wb form.mini.row { grid-template-columns: 1fr 90px auto; }
+.wb form.mini button { justify-self: start; }
+
+@media (max-width: 900px) {
+    body.wb-editor { height: auto; overflow: auto; }
+    .wb #app { grid-template-columns: 1fr; grid-template-rows: auto 62vh auto; height: auto; }
+    .wb #tools { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid #4a3319; }
+    .wb #tools .back { padding: 0 10px; align-self: center; }
+    .wb .tool { flex-direction: row; gap: 6px; padding: 6px 10px; }
+    .wb #panel { border-left: 0; border-top: 3px double var(--ink); }
+}
+@media (prefers-reduced-motion: reduce) { .wb #toast { transition: none; } }
+
+/* ---------- Site (topo, rodapé, contas) ---------- */
+body.wb { min-height: 100vh; display: flex; flex-direction: column; }
+body.wb > main { flex: 1; }
+.wb-topo {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 12px 20px; background: var(--walnut-2); border-bottom: 1px solid #4a3319;
+}
+.wb-marca { color: var(--paper); font-size: 24px; font-style: italic; text-decoration: none; }
+.wb-menu { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.wb-menu a:not(.btn), .wb-menu .wb-link { color: #c9b27c; text-decoration: none; border: 0; padding: 0; font-size: 17px; }
+.wb-menu a:not(.btn):hover, .wb-menu .wb-link:hover { color: var(--paper); background: none; }
+.wb-menu form { margin: 0; }
+.wb-menu .btn.primary { background: var(--paper); color: var(--ink); }
+.wb-nome { color: var(--paper-2); }
+.wb-rodape { padding: 18px 20px; text-align: center; color: #c9b27c; font-size: 15px; display: flex; gap: 8px; justify-content: center; }
+.wb-rodape a { color: #c9b27c; }
+.wb .shelf--estreita { max-width: 460px; }
+.wb .linha { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.wb .linha a:not(.btn) { color: var(--ink-soft); }
+.wb .wb-lista { margin: 8px 0 0; padding-left: 20px; }
+.wb .wb-lista li { margin-top: 4px; }
+.wb label.wb-check { display: flex; gap: 8px; align-items: center; }
+.wb label.wb-check input { width: auto; margin: 0; }
+
+/* atributo hidden vence o display dos botões */
+.wb [hidden] { display: none !important; }
