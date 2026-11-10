@@ -38,14 +38,14 @@ function tamanhoMax(type) {
 }
 const PLURAL = { ocean: 'Oceanos e mares', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
 const HINTS = {
-    select:   'Clique num lugar para abri-lo. Arraste para girar, role para aproximar, botão direito para mover a câmera.',
-    mountain: 'Clique no mapa para erguer uma montanha.',
-    lake:     'Clique no mapa para abrir um lago.',
+    select:   'Clique num lugar para abri-lo; botão direito num lugar abre o menu rápido (excluir, aumentar, mover...). Arraste para girar, role para aproximar.',
+    mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
+    lake:     'Clique no mapa para abrir um lago. Clique de novo dentro dele para aumentar.',
     river:    'Clique para marcar o curso do rio e aperte Enter para concluir.',
-    forest:   'Clique no mapa para plantar uma floresta.',
-    city:     'Clique no mapa para fundar uma cidade.',
-    village:  'Clique no mapa para fundar uma vila.',
-    ocean:    'Clique no mapa para abrir um oceano. Montanhas dentro dele viram ilhas.',
+    forest:   'Clique no mapa para plantar uma floresta. Clique de novo dentro dela para aumentar.',
+    city:     'Clique no mapa para fundar uma cidade. Clique de novo dentro dela para aumentar.',
+    village:  'Clique no mapa para fundar uma vila. Clique de novo dentro dela para aumentar.',
+    ocean:    'Clique no mapa para abrir um oceano. Clique de novo dentro dele para aumentar; montanhas dentro dele viram ilhas.',
     redraw:   'Clique para marcar o novo curso do rio e aperte Enter (ou Concluir) para trocar. Esc cancela.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
 };
@@ -970,8 +970,8 @@ function reach(f, x, z) {
     return distN(f, x, z) / RAIO[f.type];
 }
 
-let down = null;
-canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+let down = null, ultimoDown = null;
+canvas.addEventListener('pointerdown', (e) => { down = ultimoDown = { x: e.clientX, y: e.clientY }; fecharMenu(); });
 canvas.addEventListener('pointerup', (e) => {
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
@@ -980,25 +980,155 @@ canvas.addEventListener('pointerup', (e) => {
     const p = pick(e);
     if (p) onMapClick(p);
 });
+// Botão direito sem arrastar (arrastar com ele move a câmera) abre o menu do lugar
+canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (ultimoDown && Math.hypot(e.clientX - ultimoDown.x, e.clientY - ultimoDown.y) > 5) return;
+    const p = pick(e);
+    if (p) abrirMenu(p, e);
+});
+
+// Lugar sob o ponto do mapa (cidades e vilas ganham dos lugares grandes em volta; oceanos perdem)
+function lugarEm(p) {
+    let best = null, bestScore = 1;
+    for (const f of features) {
+        const rc = reach(f, p.x, p.z);
+        const s = rc - (f.type === 'city' || f.type === 'village' ? 0.35 : 0) + (f.type === 'ocean' ? 0.5 : 0);
+        if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
+    }
+    return best;
+}
 
 function onMapClick(p) {
     if (tool === 'select' || !EDIT) {
-        let best = null, bestScore = 1;
-        for (const f of features) {
-            const rc = reach(f, p.x, p.z);
-            const s = rc - (f.type === 'city' || f.type === 'village' ? 0.35 : 0) + (f.type === 'ocean' ? 0.5 : 0);
-            if (rc <= 1 && s < bestScore) { best = f; bestScore = s; }
-        }
-        select(best ? best.id : null);
+        select(lugarEm(p)?.id ?? null);
     } else if (tool === 'river' || tool === 'redraw') {
         riverDraft.push([p.x, p.z]);
         updateDraft();
     } else if (tool === 'move') {
         moveSelected(p);
     } else {
-        createFeature(tool, p.x, p.z);
+        criarOuAumentar(tool, p.x, p.z);
     }
 }
+
+// Clicar de novo dentro de um lugar do mesmo tipo aumenta esse lugar em vez de empilhar outro
+let criando = null;
+async function criarOuAumentar(type, x, z) {
+    if (criando) { try { await criando; } catch { /* aviso já mostrado */ } }
+    let alvo = null, menor = 0.8;
+    for (const f of features) {
+        if (f.type !== type) continue;
+        const d = distN(f, x, z);
+        if (d < menor) { alvo = f; menor = d; }
+    }
+    if (alvo) return aumentar(alvo, 1.25, true);
+    criando = createFeature(type, x, z);
+    try { await criando; } finally { criando = null; }
+}
+async function aumentar(f, k, avisar = false) {
+    const [min, , , step] = TYPES[f.type].size, max = tamanhoMax(f.type);
+    const novo = Math.min(max, Math.max(min, Math.round((f.size * k) / step) * step));
+    if (Math.abs(novo - f.size) < step / 2) {
+        toast(k > 1 ? `${TYPES[f.type].label} já está no tamanho máximo deste mapa.` : `${TYPES[f.type].label} já está no tamanho mínimo.`);
+        return;
+    }
+    const u = await api('PUT', `${API}/features/${f.id}`, { size: Number(novo.toFixed(2)) });
+    replaceFeature(u, { rebuild: true });
+    select(u.id);
+    if (avisar) toast(`${u.name} ficou maior. Para criar outro, clique fora dele.`);
+}
+
+async function excluirLugar(f) {
+    const filhos = f.npcs.length + f.shops.length + f.loose_items.length;
+    if (filhos && !confirm(`Excluir "${f.name}" com ${filhos} ${filhos === 1 ? 'NPC, loja ou item' : 'NPCs, lojas e itens'}?`)) return;
+    await api('DELETE', `${API}/features/${f.id}`);
+    features = features.filter((x) => x.id !== f.id);
+    if (selectedId === f.id) { selectedId = null; tab = 'mundo'; }
+    rebuildAll();
+    renderPanel();
+    toast(`${f.name} foi excluído.`);
+}
+
+async function duplicarLugar(f) {
+    const desl = Math.max(4, f.type === 'river' ? 6 : f.size * 1.6);
+    const cl = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
+    const extra = { skin: f.skin, color: f.color, shape: f.shape, secret: f.secret, size: f.size, description: f.description };
+    if (f.type === 'river') extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
+    const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name + ' (cópia)', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
+    features.push(novo);
+    rebuildAll();
+    select(novo.id);
+}
+
+/* ---------- Menu do botão direito ---------- */
+const menuEl = document.createElement('div');
+menuEl.className = 'ctx-menu';
+menuEl.setAttribute('role', 'menu');
+menuEl.hidden = true;
+stage.appendChild(menuEl);
+let menuAlvo = null;
+
+function abrirMenu(p, e) {
+    const f = lugarEm(p);
+    if (!f) { fecharMenu(); return; }
+    if (!EDIT) { select(f.id); return; }
+    menuAlvo = f;
+    const T = TYPES[f.type], rio = f.type === 'river';
+    const itens = [
+        ['abrir', 'Abrir e editar'],
+        ['renomear', 'Renomear…'],
+        ['maior', rio ? 'Mais largo' : 'Aumentar'],
+        ['menor', rio ? 'Mais estreito' : 'Diminuir'],
+        ['mover', 'Mover'],
+        ...(rio ? [['curso', 'Redesenhar o curso']] : []),
+        ['duplicar', 'Duplicar ao lado'],
+        ['segredo', f.secret ? 'Mostrar aos jogadores' : 'Tornar secreto'],
+        ['-'],
+        ['excluir', `Excluir ${T.label.toLowerCase()}`],
+    ];
+    menuEl.innerHTML = `<p class="ctx-titulo"><span>${esc(T.label)}</span>${esc(f.name)}</p>` + itens.map(([k, l]) => k === '-'
+        ? '<hr>'
+        : `<button type="button" role="menuitem" data-m="${k}"${k === 'excluir' ? ' class="perigo"' : ''}>${l}</button>`).join('');
+    menuEl.hidden = false;
+    const r = stage.getBoundingClientRect(), w = menuEl.offsetWidth, h = menuEl.offsetHeight;
+    menuEl.style.left = Math.min(e.clientX - r.left, r.width - w - 8) + 'px';
+    menuEl.style.top = Math.min(e.clientY - r.top, r.height - h - 8) + 'px';
+    select(f.id);
+    menuEl.querySelector('button').focus();
+}
+function fecharMenu() { menuEl.hidden = true; menuAlvo = null; }
+
+menuEl.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b || !menuAlvo) return;
+    const f = features.find((x) => x.id === menuAlvo.id);
+    fecharMenu();
+    if (!f) return;
+    switch (b.dataset.m) {
+        case 'abrir': tab = 'lugar'; select(f.id); break;
+        case 'renomear': {
+            const nome = prompt('Novo nome:', f.name);
+            if (nome && nome.trim() && nome.trim() !== f.name) replaceFeature(await api('PUT', `${API}/features/${f.id}`, { name: nome.trim().slice(0, 80) }));
+            break;
+        }
+        case 'maior': await aumentar(f, 1.25); break;
+        case 'menor': await aumentar(f, 0.8); break;
+        case 'mover': select(f.id); setTool('move'); break;
+        case 'curso': select(f.id); setTool('redraw'); break;
+        case 'duplicar': await duplicarLugar(f); break;
+        case 'segredo': replaceFeature(await api('PUT', `${API}/features/${f.id}`, { secret: !f.secret })); break;
+        case 'excluir': await excluirLugar(f); break;
+    }
+});
+menuEl.addEventListener('keydown', (e) => {
+    const bs = [...menuEl.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
+    if (e.key === 'Escape') { fecharMenu(); canvas.focus(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); bs[(i + 1) % bs.length].focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); bs[(i - 1 + bs.length) % bs.length].focus(); }
+});
+document.addEventListener('pointerdown', (e) => { if (!menuEl.hidden && !menuEl.contains(e.target) && e.target !== canvas) fecharMenu(); });
+canvas.addEventListener('wheel', fecharMenu, { passive: true });
 
 async function createFeature(type, x, z, extra = {}) {
     const t = TYPES[type];
