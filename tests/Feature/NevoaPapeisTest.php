@@ -168,4 +168,18 @@ class NevoaPapeisTest extends TestCase
         $this->putJson("/api/features/{$b['id']}", ['skin' => 'pantano', 'shape' => ['elevacao' => -3]])->assertOk()->assertJsonPath('skin', 'pantano');
         $this->putJson("/api/features/{$b['id']}", ['shape' => ['elevacao' => 40]])->assertStatus(422);
     }
+
+    public function test_trancar_o_mapa(): void
+    {
+        $id = $this->mundo->id;
+        $f = $this->mundo->features()->first();
+        $this->putJson("/api/worlds/$id", ['trancado' => true])->assertOk()->assertJsonPath('world.trancado', true);
+        $this->putJson("/api/features/{$f->id}", ['name' => 'Outro'])->assertStatus(423);
+        $this->postJson("/api/worlds/$id/features", ['type' => 'lake', 'x' => 0, 'z' => 0, 'size' => 5])->assertStatus(423);
+        $this->putJson("/api/worlds/$id", ['name' => 'Novo nome'])->assertStatus(423);
+        $this->putJson("/api/worlds/$id/fog", ['ativo' => true, 'areas' => []])->assertStatus(423);
+        $this->actingAs($this->jogador)->putJson("/api/worlds/$id", ['trancado' => false])->assertNotFound();
+        $this->actingAs($this->mestre)->putJson("/api/worlds/$id", ['trancado' => false])->assertOk()->assertJsonPath('world.trancado', false);
+        $this->actingAs($this->dono)->putJson("/api/features/{$f->id}", ['name' => 'Outro'])->assertOk();
+    }
 }

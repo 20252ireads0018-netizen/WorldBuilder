@@ -41,9 +41,11 @@ class WorldbuilderApiController extends Controller
     }
 
     /** Dono ou mestre convidado. */
-    private function exigirEditor(World $world): void
+    private function exigirEditor(World $world, bool $mudanca = true): void
     {
         abort_unless($world->podeEditar(Auth::user()), 404);
+        // mapa trancado: só visualização até alguém que edita destrancar
+        abort_if($mudanca && $world->trancado, 423, 'O mapa está trancado para edição. Destranque no botão do cadeado para mudar algo.');
     }
 
     private function exigirEditorDoLocal(Feature $feature): void
@@ -121,6 +123,7 @@ class WorldbuilderApiController extends Controller
         $out['dimension'] = (int) ($world->dimension ?: 200);
         $out['theme'] = $world->tema();
         $out['fog'] = $world->nevoa();
+        $out['trancado'] = (bool) $world->trancado;
         $out['papel'] = $dono ? 'dono' : ($editor ? 'mestre' : (is_string($papel) ? $papel : 'visitante'));
         $out['owner'] = $world->owner?->name;
         $out['cover'] = $world->urlCapa();
@@ -144,7 +147,11 @@ class WorldbuilderApiController extends Controller
 
     public function updateWorld(Request $request, World $world): JsonResponse
     {
-        $this->exigirEditor($world);
+        $this->exigirEditor($world, false);
+        // trancado: o único pedido aceito é destrancar (ou trancar de novo)
+        if ($world->trancado && collect($request->keys())->diff(['trancado'])->isNotEmpty()) {
+            abort(423, 'O mapa está trancado para edição. Destranque no botão do cadeado para mudar algo.');
+        }
         if (($request->has('visibility') || $request->has('dimension')) && ! $world->ehDono($request->user())) {
             abort(403, 'Só o dono do mundo muda a visibilidade e o tamanho do mapa.');
         }
@@ -154,6 +161,7 @@ class WorldbuilderApiController extends Controller
             'description' => 'sometimes|nullable|string|max:1000',
             'visibility' => 'sometimes|required|in:private,public',
             'dimension' => 'sometimes|required|integer|between:' . config('planos.dimensao_min') . ',' . config('planos.dimensao_max'),
+            'trancado' => 'sometimes|boolean',
         ] + Aparencia::regras());
         if (isset($data['dimension'])) {
             $data['dimension'] -= $data['dimension'] % 2;
@@ -180,6 +188,9 @@ class WorldbuilderApiController extends Controller
         $world->fill(array_intersect_key($data, array_flip(['name', 'description'])));
         if (isset($data['visibility'])) {
             $world->visibility = $data['visibility'];
+        }
+        if (isset($data['trancado'])) {
+            $world->trancado = (bool) $data['trancado'];
         }
         if (isset($data['theme'])) {
             $world->theme = Aparencia::normalizar($data['theme']);
@@ -216,7 +227,7 @@ class WorldbuilderApiController extends Controller
     /** Capa do mundo (miniatura JPEG tirada do próprio canvas), usada na lista e em Explorar. */
     public function storeCover(Request $request, World $world): JsonResponse
     {
-        $this->exigirEditor($world);
+        $this->exigirEditor($world, false);
         $request->validate(['image' => 'required|string|max:' . (int) ceil(self::MAX_CAPA * 1.4)]);
 
         $img = (string) $request->input('image');

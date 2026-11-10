@@ -24,9 +24,10 @@ class World extends Model
         'cover_version' => 'integer',
         'dimension' => 'integer',
         'fog' => 'array',
+        'trancado' => 'boolean',
     ];
 
-    protected $attributes = ['visibility' => 'private', 'dimension' => 200];
+    protected $attributes = ['visibility' => 'private', 'dimension' => 200, 'trancado' => false];
 
     protected static function booted(): void
     {

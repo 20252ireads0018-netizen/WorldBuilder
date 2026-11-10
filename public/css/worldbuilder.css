@@ -722,3 +722,7 @@ body.atlas-on { overflow: hidden; }
 
 .wb #stage { -webkit-user-select: none; user-select: none; }
 .wb .label.biome { font-style: italic; letter-spacing: .2em; font-size: 16px; opacity: .9; }
+
+.wb #btn-trava { min-width: 38px; padding: 6px 10px; }
+.wb #btn-trava.trancado { background: linear-gradient(180deg, #f6e8c4, var(--paper-2)); color: var(--ink); border-color: var(--gold); font-weight: 600; }
+.wb.mapa-trancado #tools::after, .wb .mapa-trancado #tools::after { content: '🔒 Mapa trancado: só visualização'; display: block; color: #e3cf9f; font-size: 12px; text-align: center; padding: 10px 2px; line-height: 1.35; }

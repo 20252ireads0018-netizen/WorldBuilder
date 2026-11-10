@@ -5,7 +5,8 @@
 const root = document.getElementById('app');
 const API = root.dataset.api;
 const WORLD = root.dataset.world;
-const EDIT = root.dataset.mode === 'edit';
+const PODE = root.dataset.mode === 'edit'; // quem pode editar este mundo (dono ou mestre)
+let EDIT = PODE; // falso enquanto o mapa estiver trancado (só visualização)
 const URLS = { ver: root.dataset.urlVer, exportar: root.dataset.urlExportar, copiar: root.dataset.urlCopiar };
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
 
@@ -190,8 +191,8 @@ async function api(method, url, body) {
         }
         if (!res.ok) {
             const msg = json.errors ? Object.values(json.errors)[0][0] : json.message;
-            toast(msg && res.status === 422 ? msg : 'Não foi possível salvar. Confira os campos e tente de novo.');
-            if (res.status !== 422) falhou = true;
+            toast(msg && (res.status === 422 || res.status === 423) ? msg : 'Não foi possível salvar. Confira os campos e tente de novo.');
+            if (res.status !== 422 && res.status !== 423) falhou = true;
             throw new Error('HTTP ' + res.status);
         }
         falhou = false;
@@ -1497,7 +1498,7 @@ function descartar(grupo) {
 }
 let chaveTerreno = '';
 function chaveNevoa() {
-    if (EDIT && !previaJogador) return 'livre';
+    if (PODE && !previaJogador) return 'livre';
     const a = world?.fog?.areas || [];
     return JSON.stringify([!!world?.fog?.ativo, a.length, a[a.length - 1] || null, a[0] || null]);
 }
@@ -2269,7 +2270,7 @@ function pontoVisivel(x, z) {
     return g[j * N + i] === 1;
 }
 // O que esconder agora: para jogadores sempre; para quem edita só na prévia
-const visivelAgora = (x, z) => (EDIT && !previaJogador) ? true : pontoVisivel(x, z);
+const visivelAgora = (x, z) => (PODE && !previaJogador) ? true : pontoVisivel(x, z);
 function desenharNevoa() {
     gradeNevoa = null;
     const ctx = fogCanvas.getContext('2d'), S = 512;
@@ -2283,7 +2284,7 @@ function desenharNevoa() {
     }
     fogTex.needsUpdate = true;
     uniforms.uFogOn.value = nevoaAtiva() ? 1 : 0;
-    uniforms.uFogAlpha.value = EDIT && !previaJogador ? 0.5 : 1;
+    uniforms.uFogAlpha.value = PODE && !previaJogador ? 0.5 : 1;
 }
 function pincelar(p) {
     const u = pintando.ultimo;
@@ -2897,8 +2898,8 @@ async function salvarAgora() {
 function abrirAtlas() {
     if (!window.WBAtlas) { baixarVista3D(); return; }
     window.WBAtlas.abrir({
-        world, theme, features, EDIT, SIZE, HALF, TYPES, SKINS,
-        nevoa: world.fog, soJogador: !EDIT, nomeDe,
+        world, theme, features, EDIT: PODE, SIZE, HALF, TYPES, SKINS,
+        nevoa: world.fog, soJogador: !PODE, nomeDe,
         sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf, dentroPoligono, centroDe,
         comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
         baixar3D: baixarVista3D,
@@ -2941,6 +2942,35 @@ function baixarVista3D() {
 }
 $('#btn-imagem')?.addEventListener('click', abrirAtlas);
 $('#btn-salvar')?.addEventListener('click', salvarAgora);
+
+/* ---------- Trava do mapa: só visualização até destrancar ---------- */
+const btnTrava = $('#btn-trava');
+function aplicarTrava() {
+    EDIT = PODE && !world?.trancado;
+    document.querySelectorAll('.tool').forEach((b) => { b.hidden = !EDIT; });
+    for (const id of ['#btn-desfazer', '#btn-refazer', '#btn-salvar']) { const b = $(id); if (b) b.hidden = !EDIT; }
+    if (btnTrava) {
+        btnTrava.hidden = !PODE;
+        btnTrava.textContent = world?.trancado ? '🔒 Trancado' : '🔓';
+        btnTrava.classList.toggle('trancado', !!world?.trancado);
+        btnTrava.title = world?.trancado ? 'Mapa trancado: só visualização. Clique para destrancar e voltar a editar.' : 'Trancar o mapa (fica só para visualização, sem mudar nada sem querer)';
+    }
+    root.classList.toggle('mapa-trancado', !!world?.trancado);
+    fecharMenu?.();
+    cancelDraft();
+    setTool('select');
+    updateSelection();
+    renderPanel();
+}
+btnTrava?.addEventListener('click', async () => {
+    const novo = !world.trancado;
+    try {
+        const r = await api('PUT', `${API}/worlds/${WORLD}`, { trancado: novo });
+        world.trancado = !!r.world.trancado;
+        aplicarTrava();
+        toast(world.trancado ? 'Mapa trancado: agora é só visualização. Clique no cadeado para destrancar.' : 'Mapa destrancado: pode editar de novo.');
+    } catch { /* aviso já mostrado */ }
+});
 
 /* ---------- Loop e inicialização ---------- */
 function resize() {
@@ -2989,7 +3019,8 @@ pedirDesenho(3000);
     temaSalvo = clonar(theme);
     desenharNevoa();
     botoesHistorico();
-    if (!EDIT && nevoaAtiva()) setTimeout(() => toast('Parte deste mapa ainda está coberta pela névoa: o mestre revela aos poucos.'), 1200);
+    aplicarTrava();
+    if (!PODE && nevoaAtiva()) setTimeout(() => toast('Parte deste mapa ainda está coberta pela névoa: o mestre revela aos poucos.'), 1200);
     applyTheme();
     rebuildAll();
     renderPanel();

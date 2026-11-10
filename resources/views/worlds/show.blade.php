@@ -94,6 +94,7 @@
         </div>
         <div id="acoes">
             @if($editar)
+                <button type="button" id="btn-trava" title="Trancar o mapa" aria-label="Trancar ou destrancar o mapa">🔓</button>
                 <button type="button" id="btn-desfazer" class="icone" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" disabled>↶</button>
                 <button type="button" id="btn-refazer" class="icone" title="Refazer (Ctrl+Y)" aria-label="Refazer" disabled>↷</button>
                 <button type="button" id="btn-salvar" class="primary">Salvar</button>
