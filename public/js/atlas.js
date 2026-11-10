@@ -808,7 +808,7 @@ function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
     for (const r of rotulos) {
         const tam0 = parseFloat(r.fonte.match(/(\d+(?:\.\d+)?)px/)[1]);
         let melhor = null;
-        for (const escala of [1, 0.86, 0.74]) {
+        for (const escala of [1, 0.86, 0.74, 0.64]) {
             const tam = Math.round(tam0 * escala * 10) / 10, fonte = r.fonte.replace(/\d+(?:\.\d+)?px/, tam + 'px');
             ctx.font = fonte;
             const esp = r.esp * escala;
@@ -825,11 +825,11 @@ function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
             const w = Math.max(...linhas.map(largura)) + 6, lh = tam * 1.12, h = lh * linhas.length + 2;
             const bw = r.ang ? Math.abs(w * Math.cos(r.ang)) + Math.abs(h * Math.sin(r.ang)) : w, bh = r.ang ? Math.abs(w * Math.sin(r.ang)) + Math.abs(h * Math.cos(r.ang)) : h;
             const passos = r.ang ? [[0, 0], [0, -h], [0, h], [bw * 0.5, 0], [-bw * 0.5, 0]]
-                : [[0, 0], [0, h * 0.9], [0, -h * 0.9], [0, h * 1.8], [0, -h * 1.8], [w * 0.55, 0], [-w * 0.55, 0], [w * 0.55, h], [-w * 0.55, h], [w * 0.55, -h], [-w * 0.55, -h], [0, h * 2.7], [0, -h * 2.7]];
+                : [[0, 0], [0, h * 0.9], [0, -h * 0.9], [0, h * 1.8], [0, -h * 1.8], [w * 0.55, 0], [-w * 0.55, 0], [w * 0.55, h], [-w * 0.55, h], [w * 0.55, -h], [-w * 0.55, -h], [0, h * 2.7], [0, -h * 2.7], [w * 0.8, h * 1.8], [-w * 0.8, h * 1.8], [w * 0.8, -h * 1.8], [-w * 0.8, -h * 1.8], [0, h * 3.6], [0, -h * 3.6]];
             for (const [dx, dy] of passos) {
                 let x = r.x + dx, y = r.y + dy;
                 x = clamp(x, mx + bw / 2 + 4, mx + S - bw / 2 - 4); y = clamp(y, my + bh / 2 + 4, my + S - bh / 2 - 4);
-                const caixa = [x - bw / 2, y - bh / 2, bw, bh];
+                const caixa = [x - bw / 2 - 3, y - bh / 2 - 2, bw + 6, bh + 4];
                 const sobre = bate(caixa, ocupados), cobre = bate(caixa, obstaculos);
                 const custo = sobre * 4 + cobre + Math.hypot(dx, dy) * 0.6 + (1 - escala) * 400;
                 const achou = sobre === 0 && cobre === 0;
@@ -838,8 +838,8 @@ function posicionarRotulos(ctx, rotulos, obstaculos, { mx, my, S, halo }) {
             }
             if (melhor.achou) break;
         }
-        // rios e estradas só ganham nome se houver espaço livre; os outros ficam no melhor lugar achado
-        if (!melhor.livre && (r.T === 'river' || r.T === 'road')) continue;
+        // sem espaço livre o nome não é desenhado por cima de outro (cidades, regiões e mares ficam no melhor lugar achado)
+        if (!melhor.livre && !['city', 'region', 'ocean'].includes(r.T)) continue;
         ocupados.push(melhor.caixa);
         const lw = r.T === 'city' || r.T === 'region' ? 5 : 4.2;
         melhor.linhas.forEach((s, i) => texto(ctx, s, melhor.x, melhor.y + (i - (melhor.linhas.length - 1) / 2) * melhor.lh, melhor.fonte, r.cor, halo, melhor.esp, r.ang, lw));

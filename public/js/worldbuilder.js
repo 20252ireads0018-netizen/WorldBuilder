@@ -294,13 +294,41 @@ function riverDist(f, x, z) {
 
 // Locais pré-processados (skin e cor resolvidas) para o laço por vértice
 let prep = { mountains: [], islands: [], waters: [], agua: [0.5, 0.6, 0.6], oceano: false };
+// Caixa (x0, x1, z0, z1) fora da qual o lugar não mexe no terreno: o laço por vértice pula lugares longe
+function caixa(o, alcance) {
+    const F = o.F, f = o.f;
+    if (f.points) {
+        const pts = rioPath(f), m = f.size * 2.3;
+        o.x0 = Math.min(...pts.map((p) => p[0])) - m; o.x1 = Math.max(...pts.map((p) => p[0])) + m;
+        o.z0 = Math.min(...pts.map((p) => p[1])) - m; o.z1 = Math.max(...pts.map((p) => p[1])) + m;
+        // trechos de 12 segmentos com caixa própria (distância ao rio só nos trechos próximos)
+        o.trechos = [];
+        for (let i = 0; i < pts.length - 1; i += 12) {
+            const seg = pts.slice(i, Math.min(pts.length, i + 13));
+            o.trechos.push({ seg, x0: Math.min(...seg.map((p) => p[0])) - m, x1: Math.max(...seg.map((p) => p[0])) + m, z0: Math.min(...seg.map((p) => p[1])) - m, z1: Math.max(...seg.map((p) => p[1])) + m });
+        }
+        return o;
+    }
+    const r = alcance * f.size * (1 + F.irr * 0.45 * 1.15) * Math.max(F.sx, F.sz) + 0.5;
+    o.x0 = f.x - r; o.x1 = f.x + r; o.z0 = f.z - r; o.z1 = f.z + r;
+    return o;
+}
+const fora = (o, x, z) => x < o.x0 || x > o.x1 || z < o.z0 || z > o.z1;
+function distRio(o, x, z) {
+    let m = 1e9;
+    for (const t of o.trechos) {
+        if (x < t.x0 || x > t.x1 || z < t.z0 || z > t.z1) continue;
+        for (let i = 0; i < t.seg.length - 1; i++) m = Math.min(m, distSeg(x, z, t.seg[i], t.seg[i + 1]));
+    }
+    return m;
+}
 function prepare() {
     prep = {
-        mountains: features.filter((f) => f.type === 'mountain').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 })),
-        islands: features.filter((f) => f.type === 'island').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 })),
+        mountains: features.filter((f) => f.type === 'mountain').map((f) => caixa({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 }, 3.05)),
+        islands: features.filter((f) => f.type === 'island').map((f) => caixa({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 }, 1.2)),
         // oceanos primeiro: lagos e rios desenhados por cima continuam visíveis
-        waters: features.filter((f) => f.type === 'ocean').concat(features.filter((f) => f.type === 'lake' || f.type === 'river'))
-            .map((f) => ({ f, F: forma(f), ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) })),
+        waters: features.filter((f) => f.type === 'ocean').concat(features.filter((f) => f.type === 'lake' || (f.type === 'river' && (f.points || []).length > 1)))
+            .map((f) => caixa({ f, F: forma(f), ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) }, f.type === 'ocean' ? 1.35 : 1.3)),
         agua: rgb(theme.cores.agua),
         oceano: theme.fundo === 'oceano',
     };
@@ -343,6 +371,7 @@ function sample(x, z) {
     const o = { h: baseNoise(x, z), w: 0, wc: prep.agua, ws: 0, m: 0, mc: [0, 0, 0], snow: 0, lava: 0, sea: 0 };
     let hm = 0, mr = 0, mg = 0, mb = 0;
     for (const m of prep.mountains) {
+        if (fora(m, x, z)) continue;
         const c = mountainHeight(m, x, z, o) * m.alt;
         if (c > 0.01) { hm += c; mr += m.c[0] * c; mg += m.c[1] * c; mb += m.c[2] * c; }
     }
@@ -352,6 +381,7 @@ function sample(x, z) {
 
     let melhor = 0;
     for (const wt of prep.waters) {
+        if (fora(wt, x, z)) continue;
         const f = wt.f;
         let amt = 0, t = 0;
         if (f.type === 'ocean') {
@@ -369,7 +399,7 @@ function sample(x, z) {
             o.h = o.h * (1 - t) + (-0.6) * t;
             if (dn < 1) amt = sm(1, 0.88, dn);
         } else {
-            const d = riverDist(f, x, z), w = f.size;
+            const d = distRio(wt, x, z), w = f.size;
             if (d >= w * 2.2) continue;
             t = sm(w * 2.2, w * 0.6, d);
             o.h = o.h * (1 - t) + (-0.5) * t;
@@ -391,6 +421,7 @@ function sample(x, z) {
     // Ilhas: terra firme por cima de qualquer água, com praia em volta
     let ilha = 0, ic = null, ih = 0;
     for (const il of prep.islands) {
+        if (fora(il, x, z)) continue;
         const dn = distN(il.f, x, z, il.F);
         if (dn >= 1.15) continue;
         const a = sm(1.15, 0.8, dn);
@@ -408,13 +439,24 @@ function sample(x, z) {
     }
     return o;
 }
-const heightAt = (x, z) => sample(x, z).h;
+// Grade do terreno (mesmos vértices da malha): altura e água por interpolação, sem refazer o cálculo
+let grade = null;
+function naGrade(arr, x, z) {
+    if (!grade) return null;
+    const n = grade.n, k = n / SIZE;
+    const gx = Math.max(0, Math.min(n - 1e-6, (x + HALF) * k)), gz = Math.max(0, Math.min(n - 1e-6, (z + HALF) * k));
+    const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, w = n + 1;
+    const a = arr[j * w + i], b = arr[j * w + i + 1], c = arr[(j + 1) * w + i], d = arr[(j + 1) * w + i + 1];
+    return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
+}
+const heightAt = (x, z) => naGrade(grade?.h, x, z) ?? sample(x, z).h;
+const aguaAt = (x, z) => naGrade(grade?.w, x, z) ?? sample(x, z).w;
 
 /* ---------- Cena ---------- */
 const stage = $('#stage');
 const canvas = $('#gl');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(45, 1, 0.5, 1500);
 camera.position.set(0, 120, 150);
@@ -602,6 +644,7 @@ function buildTerrain() {
     g.setAttribute('aMCol', new THREE.BufferAttribute(mc, 3));
     g.setAttribute('aFx', new THREE.BufferAttribute(fx, 4));
     g.computeVertexNormals();
+    grade = { n: SEG, h: hs, w: water };
     if (terrain) { scene.remove(terrain); terrain.geometry.dispose(); }
     terrain = new THREE.Mesh(g, material);
     scene.add(terrain);
@@ -647,6 +690,7 @@ function applyTheme() {
 
 /* ---------- Modelos 3D (casas, árvores, rochas, cristais, juncos) ---------- */
 const props = new THREE.Group();
+let destino = props; // grupo do lugar sendo montado (cada lugar tem o seu, guardado entre reconstruções)
 scene.add(props);
 
 function rng(seed) {
@@ -804,7 +848,7 @@ function povoado(f) {
     const n = Math.min(400, Math.round((city ? 8 + f.size * 1.6 * (1 + f.size / 20) : 3 + f.size * (1 + f.size / 12)) * dens));
     for (let i = 0; i < n; i++) {
         const [x, z] = city ? pontoDentro(f, r, F, 0.18, 0.78) : pontoDentro(f, r, F, 0, 0.75);
-        if (sample(x, z).w > 0.3 || !visivelAgora(x, z)) continue;
+        if (aguaAt(x, z) > 0.3 || !visivelAgora(x, z)) continue;
         const w = city ? 1.4 + r() * 1.4 : 1.1 + r() * 0.8;
         const h = city ? 1.6 + r() * 2.2 : 1.0 + r() * 0.9;
         const m = casa(skin, roof, w, h, w * (0.8 + r() * 0.5), r);
@@ -818,7 +862,7 @@ function povoado(f) {
         g.add(t);
     }
     if (skin === 'fortaleza' && visivelAgora(f.x, f.z)) muralha(f, g);
-    props.add(g);
+    destino.add(g);
 }
 
 // Árvores em InstancedMesh: um tronco e uma copa por árvore
@@ -835,7 +879,7 @@ function instancias(geo, material, lista) {
     });
     im.instanceMatrix.needsUpdate = true;
     if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    props.add(im);
+    destino.add(im);
 }
 const corVar = (hex, r, k = 0.18) => '#' + new THREE.Color(hex).offsetHSL((r() - 0.5) * 0.04, (r() - 0.5) * k, (r() - 0.5) * k).getHexString();
 
@@ -846,9 +890,8 @@ function floresta(f) {
     for (let i = 0; i < n; i++) {
         const [x, z] = pontoDentro(f, r, F);
         if (Math.abs(x) > HALF - 2 || Math.abs(z) > HALF - 2 || !visivelAgora(x, z)) continue;
-        const s = sample(x, z);
-        if (s.w > 0.15) continue;
-        const y = s.h - 0.1, k = 0.75 + r() * 0.6;
+        if (aguaAt(x, z) > 0.15) continue;
+        const y = heightAt(x, z) - 0.1, k = 0.75 + r() * 0.6;
         switch (skin) {
             case 'pinheiros':
                 troncos.push({ x, y, z, sx: 0.12 * k, sy: 0.7 * k, sz: 0.12 * k });
@@ -945,7 +988,7 @@ function estrada(f) {
         g.setIndex(idx);
         g.computeVertexNormals();
         const m = new THREE.MeshLambertMaterial({ color: hex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-        props.add(new THREE.Mesh(g, m));
+        proprio(new THREE.Mesh(g, m));
     };
     if (skin === 'real') faixa(w * 1.5, '#' + new THREE.Color(cor).multiplyScalar(0.6).getHexString(), 0.1, false);
     faixa(w, cor, 0.16, skin === 'trilha');
@@ -954,7 +997,7 @@ function estrada(f) {
 /* ---------- Torres, ruínas e fenômenos (névoa, chuva, tempestade, terremoto, nevasca, magia) ---------- */
 const chaoEm = (x, z) => Math.max(heightAt(x, z), 0.2) - 0.1;
 // Peças criadas aqui (geometria própria) são descartadas a cada reconstrução
-function proprio(o) { o.userData.proprio = true; props.add(o); return o; }
+function proprio(o) { o.userData.proprio = true; destino.add(o); return o; }
 function giroDe(F) { return -Math.atan2(F.s, F.c); }
 
 function torre(f) {
@@ -1002,13 +1045,13 @@ function torre(f) {
     g.scale.set(F.sx, 1, F.sz);
     g.rotation.y = giroDe(F);
     g.position.set(f.x, chaoEm(f.x, f.z), f.z);
-    props.add(g);
+    destino.add(g);
 }
 
 function ruina(f) {
     const g = new THREE.Group(), r = rng(f.id * 19 + 7), skin = skinOf(f), cor = corOf(f), F = forma(f);
     const dens = f.shape?.densidade ?? 1, k = Math.max(0.6, Math.min(2.5, f.size / 6)), ry = giroDe(F);
-    const ok = (x, z) => visivelAgora(x, z) && sample(x, z).w < 0.3;
+    const ok = (x, z) => visivelAgora(x, z) && aguaAt(x, z) < 0.3;
     const musgo = '#6f7f4a';
     const naBorda = (a, d) => paraMundo(f, Math.cos(a) * f.size * d * borda(F, a), Math.sin(a) * f.size * d * borda(F, a), F);
     switch (skin) {
@@ -1090,7 +1133,7 @@ function ruina(f) {
             }
         }
     }
-    props.add(g);
+    destino.add(g);
 }
 
 // Manto translúcido que acompanha o relevo, mais forte no centro e sumindo na borda
@@ -1396,15 +1439,39 @@ function regiao(f) {
     }
 }
 
-function buildProps() {
-    props.children.forEach((c) => {
+const cacheProps = new Map(); // id do lugar -> { chave, grupo }
+function descartar(grupo) {
+    grupo.traverse((c) => {
         if (c.isInstancedMesh) { c.material.dispose(); c.dispose?.(); }
         if (c.userData.proprio) c.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
     });
-    props.clear();
+}
+let chaveTerreno = '';
+function chaveNevoa() {
+    if (EDIT && !previaJogador) return 'livre';
+    const a = world?.fog?.areas || [];
+    return JSON.stringify([!!world?.fog?.ativo, a.length, a[a.length - 1] || null, a[0] || null]);
+}
+function buildProps() {
     contorno = theme.estilo !== 'natural';
     inkMat.color.set(theme.cores.tinta);
+    const base = JSON.stringify([chaveTerreno, contorno, chaveNevoa(), SIZE]), vivos = new Set();
     for (const f of features) {
+        const chave = base + JSON.stringify([f.type, f.x, f.z, f.size, f.skin, f.color, f.shape, f.points, corOf(f), skinOf(f)]);
+        vivos.add(f.id);
+        const c = cacheProps.get(f.id);
+        if (c && c.chave === chave) continue;
+        if (c) { props.remove(c.grupo); descartar(c.grupo); }
+        const grupo = new THREE.Group();
+        destino = grupo;
+        try { construirModelo(f); } catch (e) { console.error(e); } finally { destino = props; }
+        props.add(grupo);
+        cacheProps.set(f.id, { chave, grupo });
+    }
+    for (const [id, c] of cacheProps) if (!vivos.has(id)) { props.remove(c.grupo); descartar(c.grupo); cacheProps.delete(id); }
+}
+function construirModelo(f) {
+    {
         if (f.type === 'city' || f.type === 'village') povoado(f);
         else if (f.type === 'forest') floresta(f);
         else if (f.type === 'mountain') enfeitesMontanha(f);
@@ -1452,9 +1519,15 @@ function syncLabels() {
         el.className = 'label ' + f.type + (f.id === selectedId ? ' sel' : '') + (f.secret ? ' secreto' : '');
         el.innerHTML = labelHtml(f);
         labelsEl.appendChild(el);
-        labels.set(f.id, { el, pos: a, f });
+        labels.set(f.id, { el, pos: a, f, w: 0, h: 0 });
     }
+    // tamanho de cada nome medido uma vez (para afastar os que se encostam)
+    labels.forEach((l) => { l.w = l.el.offsetWidth; l.h = l.el.offsetHeight; });
+    ordemRotulos = [...labels.values()];
 }
+// Quem escolhe lugar primeiro quando dois nomes se encostam
+const PRIORIDADE_ROTULO = { city: 0, region: 1, ocean: 2, island: 3, mountain: 4, lake: 5, tower: 6, forest: 7, ruins: 8, village: 9, phenomenon: 10, river: 11, road: 12 };
+let ordemRotulos = [];
 function markSelectedLabel() {
     // Lugares sem nome (ou com o nome escondido) só mostram rótulo enquanto estão selecionados
     if (features.some((f) => f.shape?.semNome || !f.name || f.shape?.oculta)) { syncLabels(); return; }
@@ -1463,16 +1536,32 @@ function markSelectedLabel() {
 const tmp = new THREE.Vector3();
 function updateLabels() {
     const w = stage.clientWidth, h = stage.clientHeight;
-    labels.forEach(({ el, pos, f }) => {
-        tmp.copy(pos).project(camera);
-        const far = f.type === 'village' && camera.position.distanceTo(pos) > 200 * Math.max(1, K * 0.8);
-        const hide = tmp.z > 1 || Math.abs(tmp.x) > 1.1 || Math.abs(tmp.y) > 1.1 || far;
-        el.style.display = hide ? 'none' : '';
-        if (!hide) {
-            el.style.left = (tmp.x * 0.5 + 0.5) * w + 'px';
-            el.style.top = (-tmp.y * 0.5 + 0.5) * h + 'px';
+    // selecionado primeiro, depois por importância e pelo que está mais perto da câmera
+    const lista = [];
+    for (const l of ordemRotulos) {
+        tmp.copy(l.pos).project(camera);
+        const far = l.f.type === 'village' && camera.position.distanceTo(l.pos) > 200 * Math.max(1, K * 0.8);
+        if (tmp.z > 1 || Math.abs(tmp.x) > 1.1 || Math.abs(tmp.y) > 1.1 || far) { if (l.vis !== false) { l.el.style.display = 'none'; l.vis = false; } continue; }
+        lista.push({ l, x: (tmp.x * 0.5 + 0.5) * w, y: (-tmp.y * 0.5 + 0.5) * h, z: tmp.z });
+    }
+    lista.sort((a, b) => (b.l.f.id === selectedId) - (a.l.f.id === selectedId) || (PRIORIDADE_ROTULO[a.l.f.type] ?? 9) - (PRIORIDADE_ROTULO[b.l.f.type] ?? 9) || a.z - b.z);
+    const ocupados = [];
+    const livre = (x0, y0, x1, y1) => ocupados.every((o) => x1 <= o[0] || x0 >= o[2] || y1 <= o[1] || y0 >= o[3]);
+    for (const it of lista) {
+        const { l } = it, lw = l.w + 4, lh = l.h + 2;
+        let pos = null;
+        for (const [dx, dy] of [[0, 0], [0, lh * 0.9], [0, -lh * 0.9], [lw * 0.55, 0], [-lw * 0.55, 0], [0, lh * 1.8], [0, -lh * 1.8]]) {
+            const x = it.x + dx, y = it.y + dy;
+            if (livre(x - lw / 2, y - lh / 2, x + lw / 2, y + lh / 2)) { pos = [x, y]; break; }
         }
-    });
+        // sem espaço: o selecionado aparece mesmo assim; os outros somem até haver lugar
+        if (!pos && l.f.id === selectedId) pos = [it.x, it.y];
+        if (!pos) { if (l.vis !== false) { l.el.style.display = 'none'; l.vis = false; } continue; }
+        ocupados.push([pos[0] - lw / 2, pos[1] - lh / 2, pos[0] + lw / 2, pos[1] + lh / 2]);
+        if (l.vis !== true) { l.el.style.display = ''; l.vis = true; }
+        l.el.style.left = pos[0] + 'px';
+        l.el.style.top = pos[1] + 'px';
+    }
 }
 
 /* ---------- Seleção e rascunho de rio ---------- */
@@ -2046,15 +2135,27 @@ fogTex.flipY = false;
 uniforms.uFog.value = fogTex;
 const nevoaAtiva = () => !!world?.fog?.ativo;
 // Ponto visível para quem joga (mesma regra do servidor: a última pincelada que cobre o ponto vence)
+let gradeNevoa = null; // 256x256, refeita quando a névoa muda
+function montarGradeNevoa() {
+    const N = 256, g = new Uint8Array(N * N), k = N / SIZE;
+    for (const [ax, az, r, v] of world.fog.areas) {
+        const cx = (ax + HALF) * k, cz = (az + HALF) * k, rr = r * k;
+        const i0 = Math.max(0, Math.floor(cx - rr)), i1 = Math.min(N - 1, Math.ceil(cx + rr)), j0 = Math.max(0, Math.floor(cz - rr)), j1 = Math.min(N - 1, Math.ceil(cz + rr));
+        for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) if ((i + 0.5 - cx) ** 2 + (j + 0.5 - cz) ** 2 <= rr * rr) g[j * N + i] = v ? 1 : 0;
+    }
+    return { N, g, k };
+}
 function pontoVisivel(x, z) {
     if (!nevoaAtiva()) return true;
-    let vis = false;
-    for (const [ax, az, r, v] of world.fog.areas) if ((x - ax) ** 2 + (z - az) ** 2 <= r * r) vis = !!v;
-    return vis;
+    if (!gradeNevoa) gradeNevoa = montarGradeNevoa();
+    const { N, g, k } = gradeNevoa;
+    const i = Math.max(0, Math.min(N - 1, Math.floor((x + HALF) * k))), j = Math.max(0, Math.min(N - 1, Math.floor((z + HALF) * k)));
+    return g[j * N + i] === 1;
 }
 // O que esconder agora: para jogadores sempre; para quem edita só na prévia
 const visivelAgora = (x, z) => (EDIT && !previaJogador) ? true : pontoVisivel(x, z);
 function desenharNevoa() {
+    gradeNevoa = null;
     const ctx = fogCanvas.getContext('2d'), S = 512;
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
     for (const [x, z, r, v] of world?.fog?.areas || []) {
@@ -2089,9 +2190,15 @@ async function salvarNevoa(antes, rotulo) {
     catch { world.fog = antes; desenharNevoa(); }
 }
 
+const TERRENO = new Set(['mountain', 'island', 'ocean', 'lake', 'river']);
 function rebuildAll() {
-    prepare();
-    buildTerrain();
+    const chave = JSON.stringify([SIZE, theme.fundo, theme.cores, theme.skins,
+        features.filter((f) => TERRENO.has(f.type)).map((f) => [f.id, f.type, f.x, f.z, f.size, f.skin, f.color, f.shape, f.points])]);
+    if (chave !== chaveTerreno || !terrain) {
+        prepare();
+        buildTerrain();
+        chaveTerreno = chave;
+    }
     buildProps();
     syncLabels();
     updateSelection();
