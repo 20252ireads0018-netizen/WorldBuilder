@@ -32,12 +32,13 @@
                     <textarea name="description" rows="2" maxlength="1000" placeholder="Em poucas linhas, como é esse mundo?">{{ old('description') }}</textarea>
                 </label>
                 @php($limites = auth()->user()->limites())
-                <label>Tamanho do mapa
-                    <select name="dimension">
+                <label>Tamanho do mapa (lado, de {{ config('planos.dimensao_min') }} a {{ $limites['dimensao'] }} no seu plano)
+                    <input type="number" name="dimension" list="wb-dims" min="{{ config('planos.dimensao_min') }}" max="{{ config('planos.dimensao_max') }}" step="2" value="{{ old('dimension', 200) }}">
+                    <datalist id="wb-dims">
                         @foreach (config('planos.dimensoes') as $d => $nome)
-                            <option value="{{ $d }}" @selected((int) old('dimension', 200) === $d)>{{ $nome }} ({{ $d }} × {{ $d }}){{ $d > $limites['dimensao'] ? ' · plano Cartógrafo' : '' }}</option>
+                            <option value="{{ $d }}">{{ $nome }}{{ $d > $limites['dimensao'] ? ' · plano Cartógrafo' : '' }}</option>
                         @endforeach
-                    </select>
+                    </datalist>
                 </label>
                 @error('name') <p class="error">{{ $message }}</p> @enderror
             </form>
@@ -127,10 +128,12 @@
                     </a>
                     <div class="world-txt">
                         <h2><a href="{{ route('worldbuilder.ver', $world) }}">{{ $world->name }}</a></h2>
+                        @php($mestre = $world->players->first()?->pivot?->papel === 'mestre')
                         <p class="meta">de {{ $world->owner?->name }} · {{ $world->features_count }} {{ $world->features_count === 1 ? 'lugar' : 'lugares' }}</p>
+                        <p><span class="selo {{ $mestre ? 'publico' : '' }}">{{ $mestre ? 'Você é mestre' : 'Você é jogador' }}</span></p>
                     </div>
                     <div class="actions">
-                        <a class="btn primary" href="{{ route('worldbuilder.ver', $world) }}">Ver mapa</a>
+                        <a class="btn primary" href="{{ route($mestre ? 'worldbuilder.show' : 'worldbuilder.ver', $world) }}">{{ $mestre ? 'Editar mapa' : 'Ver mapa' }}</a>
                     </div>
                 </article>
             @endforeach

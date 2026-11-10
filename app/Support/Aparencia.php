@@ -8,13 +8,19 @@ namespace App\Support;
  */
 final class Aparencia
 {
-    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean'];
+    public const TIPOS = ['mountain', 'lake', 'river', 'city', 'village', 'forest', 'ocean', 'island', 'road'];
+
+    /** Tipos desenhados como linha (pontos): rios e estradas. */
+    public const LINHAS = ['river', 'road'];
+
+    /** Trocas de tipo permitidas sem refazer o lugar. */
+    public const GRUPOS = [['city', 'village'], ['lake', 'ocean'], ['river', 'road'], ['mountain', 'island']];
 
     public const FUNDOS = ['pergaminho', 'oceano', 'noite', 'nevoa', 'cor'];
 
     public const ESTILOS = ['pergaminho', 'natural', 'ilustrado'];
 
-    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta'];
+    public const CORES = ['fundo', 'terra', 'montanha', 'agua', 'tinta', 'floresta', 'telhado', 'estrada'];
 
     private const AGUA = ['calma', 'cristalina', 'congelada', 'pantano', 'lava'];
     private const POVOADO = ['medieval', 'elfica', 'deserto', 'nordica', 'fortaleza', 'oriental', 'ruinas'];
@@ -27,6 +33,8 @@ final class Aparencia
         'village' => self::POVOADO,
         'forest' => ['carvalhos', 'pinheiros', 'outono', 'morta', 'magica'],
         'ocean' => ['mar', 'tropical', 'tempestuoso', 'gelado', 'abissal'],
+        'island' => ['verde', 'areia', 'tropical', 'vulcanica', 'gelo'],
+        'road' => ['terra', 'pedra', 'trilha', 'real'],
     ];
 
     public const COR = '/^#[0-9a-fA-F]{6}$/';
@@ -42,6 +50,9 @@ final class Aparencia
                 'montanha' => '#9a7b52',
                 'agua' => '#7f9f93',
                 'tinta' => '#4d3017',
+                'floresta' => '#4f7a3a',
+                'telhado' => '#9a4a2c',
+                'estrada' => '#8a6a44',
             ],
             'skins' => array_map(fn (array $s) => $s[0], self::SKINS),
         ];
@@ -91,6 +102,18 @@ final class Aparencia
         return $r;
     }
 
+    /** Tipos para os quais um lugar pode virar sem perder nada. */
+    public static function trocasDe(string $tipo): array
+    {
+        foreach (self::GRUPOS as $g) {
+            if (in_array($tipo, $g, true)) {
+                return $g;
+            }
+        }
+
+        return [$tipo];
+    }
+
     public static function skinValida(string $tipo, ?string $skin): bool
     {
         return $skin === null || in_array($skin, self::SKINS[$tipo] ?? [], true);
@@ -117,6 +140,9 @@ final class Aparencia
             'shape.giro' => 'nullable|numeric|between:0,360',
             'shape.irregular' => 'nullable|numeric|between:0,1',
             'shape.curvas' => 'nullable|numeric|between:0,1',
+            'shape.altura' => 'nullable|numeric|between:0.2,3',
+            'shape.densidade' => 'nullable|numeric|between:0.2,3',
+            'shape.semNome' => 'nullable|boolean',
         ];
     }
 
@@ -127,7 +153,10 @@ final class Aparencia
             return null;
         }
         $out = [];
-        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0] as $k => $padrao) {
+        if (! empty($shape['semNome'])) {
+            $shape['semNome'] = 1;
+        }
+        foreach (['esticar' => 1.0, 'giro' => 0.0, 'irregular' => -1.0, 'curvas' => 0.0, 'altura' => 1.0, 'densidade' => 1.0, 'semNome' => 0.0] as $k => $padrao) {
             if (isset($shape[$k]) && is_numeric($shape[$k]) && (float) $shape[$k] !== $padrao) {
                 $out[$k] = round((float) $shape[$k], 3);
             }

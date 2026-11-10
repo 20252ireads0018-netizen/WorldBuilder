@@ -9,6 +9,7 @@ use App\Models\Shop;
 use App\Models\User;
 use App\Models\World;
 use App\Support\Aparencia;
+use App\Support\MundoArquivo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,7 @@ class WorldbuilderApiController extends Controller
     public const MAX_FILHOS = 200; // NPCs, lojas ou itens por local
     public const MAX_JOGADORES = 50;
     public const MAX_CAPA = 400_000; // bytes do JPEG da capa
+    public const MAX_NEVOA = 1500; // pinceladas de névoa guardadas por mundo
 
     private const RELACOES = ['npcs', 'shops.items', 'looseItems'];
 
@@ -38,9 +40,15 @@ class WorldbuilderApiController extends Controller
         abort_unless((int) $world->user_id === (int) Auth::id(), 404);
     }
 
-    private function exigirDonoDoLocal(Feature $feature): void
+    /** Dono ou mestre convidado. */
+    private function exigirEditor(World $world): void
     {
-        $this->exigirDono($feature->world);
+        abort_unless($world->podeEditar(Auth::user()), 404);
+    }
+
+    private function exigirEditorDoLocal(Feature $feature): void
+    {
+        $this->exigirEditor($feature->world);
     }
 
     /** Garante que a loja informada pertence ao local. */
@@ -62,25 +70,50 @@ class WorldbuilderApiController extends Controller
     {
         $user = Auth::user();
         abort_unless($world->podeVer($user), 404);
-        $dono = $world->ehDono($user);
+        $papel = $world->papel($user);
+        $editor = in_array($papel, ['dono', 'mestre'], true);
 
         $q = $world->features()->with(self::RELACOES);
-        if (! $dono) {
+        if (! $editor) {
             $q->where('secret', false);
+        }
+        $features = $q->get();
+
+        // Névoa de guerra: quem não é mestre só recebe o que já foi revelado
+        $nevoa = $world->nevoa();
+        if (! $editor && $nevoa['ativo']) {
+            $features = $features->filter(function (Feature $f) use ($nevoa) {
+                if (in_array($f->type, Aparencia::LINHAS, true)) {
+                    $pts = array_values(array_filter($f->points ?? [], fn ($p) => World::pontoVisivel($nevoa, $p[0], $p[1])));
+                    if (count($pts) < 2) {
+                        return false;
+                    }
+                    $f->points = $pts;
+
+                    return true;
+                }
+
+                return World::pontoVisivel($nevoa, $f->x, $f->z);
+            })->values();
         }
 
         return response()->json([
-            'world' => $this->mundoJson($world, $dono),
-            'features' => $q->get(),
-            'can_edit' => $dono,
+            'world' => $this->mundoJson($world, $papel),
+            'features' => $features,
+            'can_edit' => $editor,
+            'papel' => $papel ?? 'visitante',
         ]);
     }
 
-    private function mundoJson(World $world, bool $dono): array
+    private function mundoJson(World $world, bool|string|null $papel): array
     {
+        $dono = $papel === true || $papel === 'dono';
+        $editor = $dono || $papel === 'mestre';
         $out = $world->only('id', 'name', 'description', 'visibility');
         $out['dimension'] = (int) ($world->dimension ?: 200);
         $out['theme'] = $world->tema();
+        $out['fog'] = $world->nevoa();
+        $out['papel'] = $dono ? 'dono' : ($editor ? 'mestre' : (is_string($papel) ? $papel : 'visitante'));
         $out['owner'] = $world->owner?->name;
         $out['cover'] = $world->urlCapa();
         if ($dono) {
@@ -88,11 +121,12 @@ class WorldbuilderApiController extends Controller
             $out['plano'] = [
                 'pago' => (bool) $world->owner?->temPlanoPago(),
                 'dimensao_max' => $lim['dimensao'],
+                'dimensao_min' => (int) config('planos.dimensao_min'),
                 'dimensoes' => config('planos.dimensoes'),
                 'url' => route('planos'),
             ];
             $out['players'] = $world->players()->orderBy('name')->get(['users.id', 'name', 'email'])
-                ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email])->values();
+                ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'papel' => $u->pivot->papel ?: 'jogador'])->values();
         }
 
         return $out;
@@ -102,14 +136,20 @@ class WorldbuilderApiController extends Controller
 
     public function updateWorld(Request $request, World $world): JsonResponse
     {
-        $this->exigirDono($world);
+        $this->exigirEditor($world);
+        if (($request->has('visibility') || $request->has('dimension')) && ! $world->ehDono($request->user())) {
+            abort(403, 'Só o dono do mundo muda a visibilidade e o tamanho do mapa.');
+        }
 
         $data = $request->validate([
             'name' => 'sometimes|required|string|max:80',
             'description' => 'sometimes|nullable|string|max:1000',
             'visibility' => 'sometimes|required|in:private,public',
-            'dimension' => ['sometimes', 'required', 'integer', Rule::in(array_keys(config('planos.dimensoes')))],
+            'dimension' => 'sometimes|required|integer|between:' . config('planos.dimensao_min') . ',' . config('planos.dimensao_max'),
         ] + Aparencia::regras());
+        if (isset($data['dimension'])) {
+            $data['dimension'] -= $data['dimension'] % 2;
+        }
 
         if (isset($data['dimension']) && (int) $data['dimension'] !== (int) $world->dimension) {
             $user = $request->user();
@@ -138,13 +178,37 @@ class WorldbuilderApiController extends Controller
         }
         $world->save();
 
-        return response()->json(['world' => $this->mundoJson($world, true)]);
+        return response()->json(['world' => $this->mundoJson($world, $world->papel($request->user()))]);
+    }
+
+    /** Névoa de guerra: áreas reveladas (1) ou cobertas de novo (0), aplicadas em ordem. */
+    public function updateFog(Request $request, World $world): JsonResponse
+    {
+        $this->exigirEditor($world);
+        $meia = $world->meia() + 50;
+        $data = $request->validate([
+            'ativo' => 'required|boolean',
+            'areas' => 'present|array|max:' . self::MAX_NEVOA,
+            'areas.*' => 'array|size:4',
+            'areas.*.0' => "numeric|between:-$meia,$meia",
+            'areas.*.1' => "numeric|between:-$meia,$meia",
+            'areas.*.2' => 'numeric|between:0.5,600',
+            'areas.*.3' => 'integer|in:0,1',
+        ]);
+        $world->fog = [
+            'ativo' => (bool) $data['ativo'],
+            'areas' => array_map(fn ($a) => [round((float) $a[0], 2), round((float) $a[1], 2), round((float) $a[2], 2), (int) $a[3]], $data['areas']),
+        ];
+        $world->timestamps = false;
+        $world->save();
+
+        return response()->json(['fog' => $world->nevoa()]);
     }
 
     /** Capa do mundo (miniatura JPEG tirada do próprio canvas), usada na lista e em Explorar. */
     public function storeCover(Request $request, World $world): JsonResponse
     {
-        $this->exigirDono($world);
+        $this->exigirEditor($world);
         $request->validate(['image' => 'required|string|max:' . (int) ceil(self::MAX_CAPA * 1.4)]);
 
         $img = (string) $request->input('image');
@@ -165,7 +229,8 @@ class WorldbuilderApiController extends Controller
     public function storePlayer(Request $request, World $world): JsonResponse
     {
         $this->exigirDono($world);
-        $data = $request->validate(['email' => 'required|email|max:255']);
+        $data = $request->validate(['email' => 'required|email|max:255', 'papel' => 'nullable|in:jogador,mestre']);
+        $papel = $data['papel'] ?? 'jogador';
 
         $user = User::where('email', mb_strtolower(trim($data['email'])))->first();
         if (! $user) {
@@ -177,9 +242,23 @@ class WorldbuilderApiController extends Controller
         if ($world->players()->count() >= self::MAX_JOGADORES) {
             abort(422, 'Este mundo chegou ao limite de ' . self::MAX_JOGADORES . ' jogadores.');
         }
-        $world->players()->syncWithoutDetaching([$user->id]);
+        if ($world->players()->whereKey($user->id)->exists()) {
+            $world->players()->updateExistingPivot($user->id, ['papel' => $papel]);
+        } else {
+            $world->players()->attach($user->id, ['papel' => $papel]);
+        }
 
         return response()->json(['world' => $this->mundoJson($world, true)], 201);
+    }
+
+    public function updatePlayer(Request $request, World $world, User $user): JsonResponse
+    {
+        $this->exigirDono($world);
+        $data = $request->validate(['papel' => 'required|in:jogador,mestre']);
+        abort_unless($world->players()->whereKey($user->id)->exists(), 404);
+        $world->players()->updateExistingPivot($user->id, ['papel' => $data['papel']]);
+
+        return response()->json(['world' => $this->mundoJson($world, true)]);
     }
 
     public function destroyPlayer(World $world, User $user): JsonResponse
@@ -194,7 +273,7 @@ class WorldbuilderApiController extends Controller
 
     public function storeFeature(Request $request, World $world): JsonResponse
     {
-        $this->exigirDono($world);
+        $this->exigirEditor($world);
 
         $data = $request->validate([
             'type' => 'required|in:' . implode(',', Aparencia::TIPOS),
@@ -206,10 +285,11 @@ class WorldbuilderApiController extends Controller
         ] + Aparencia::regrasLugar((int) $world->dimension));
         $data['shape'] = Aparencia::formato($data['shape'] ?? null);
 
-        if ($data['type'] === 'river' && count($data['points'] ?? []) < 2) {
-            abort(422, 'Um rio precisa de pelo menos dois pontos.');
+        $linha = in_array($data['type'], Aparencia::LINHAS, true);
+        if ($linha && count($data['points'] ?? []) < 2) {
+            abort(422, ($data['type'] === 'road' ? 'Uma estrada' : 'Um rio') . ' precisa de pelo menos dois pontos.');
         }
-        if ($data['type'] !== 'river') {
+        if (! $linha) {
             $data['points'] = null;
         }
         if ($world->features()->count() >= self::MAX_LOCAIS) {
@@ -224,7 +304,7 @@ class WorldbuilderApiController extends Controller
 
     public function updateFeature(Request $request, Feature $feature): JsonResponse
     {
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
 
         $data = $request->validate([
             'name' => 'sometimes|required|string|max:80',
@@ -232,9 +312,21 @@ class WorldbuilderApiController extends Controller
             'skin' => ['sometimes', 'nullable', Rule::in(Aparencia::SKINS[$feature->type] ?? [])],
             'color' => ['sometimes', 'nullable', 'regex:' . Aparencia::COR],
             'secret' => 'sometimes|boolean',
+            'type' => ['sometimes', 'required', Rule::in(Aparencia::trocasDe($feature->type))],
         ] + Aparencia::regrasLugar((int) $feature->world->dimension, true));
-        if (isset($data['points']) && $feature->type !== 'river') {
+        $tipo = $data['type'] ?? $feature->type;
+        if (isset($data['points']) && ! in_array($tipo, Aparencia::LINHAS, true)) {
             unset($data['points']);
+        }
+        // Trocou o tipo: o modelo antigo pode não existir no novo
+        if ($tipo !== $feature->type) {
+            $skin = array_key_exists('skin', $data) ? $data['skin'] : $feature->skin;
+            $data['skin'] = Aparencia::skinValida($tipo, $skin) ? $skin : null;
+            if (! in_array($tipo, ['city', 'village'], true) && $feature->shops()->exists()) {
+                abort(422, 'Só cidades e vilas têm lojas.');
+            }
+        } elseif (array_key_exists('skin', $data) && ! Aparencia::skinValida($tipo, $data['skin'])) {
+            abort(422, 'Modelo inválido para este lugar.');
         }
         if (array_key_exists('shape', $data)) {
             $data['shape'] = Aparencia::formato($data['shape']);
@@ -251,17 +343,33 @@ class WorldbuilderApiController extends Controller
 
     public function destroyFeature(Feature $feature): JsonResponse
     {
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
+        $copia = MundoArquivo::lugarParaArquivo($feature);
         $feature->delete();
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'restaurar' => $copia]);
+    }
+
+    /** Desfazer uma exclusão: recria o lugar com NPCs, lojas e itens. */
+    public function restoreFeature(Request $request, World $world): JsonResponse
+    {
+        $this->exigirEditor($world);
+        $d = $request->validate(MundoArquivo::regrasLugarArquivo('feature.', (int) $world->dimension));
+        if ($world->features()->count() >= self::MAX_LOCAIS) {
+            abort(422, 'Este mapa chegou ao limite de ' . self::MAX_LOCAIS . ' lugares.');
+        }
+        $f = MundoArquivo::criarLugar($world, $d['feature']);
+        abort_unless($f, 422, 'Lugar inválido.');
+        $world->touch();
+
+        return response()->json($this->full($f), 201);
     }
 
     // ---- NPCs ---------------------------------------------------------
 
     public function storeNpc(Request $request, Feature $feature): JsonResponse
     {
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
 
         $data = $request->validate([
             'name' => 'required|string|max:80',
@@ -280,7 +388,7 @@ class WorldbuilderApiController extends Controller
     public function destroyNpc(Npc $npc): JsonResponse
     {
         $feature = $npc->feature;
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
         $npc->delete();
 
         return response()->json($this->full($feature));
@@ -290,7 +398,7 @@ class WorldbuilderApiController extends Controller
 
     public function storeShop(Request $request, Feature $feature): JsonResponse
     {
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
 
         if (! in_array($feature->type, ['city', 'village'], true)) {
             abort(422, 'Lojas só existem em cidades e vilas.');
@@ -310,7 +418,7 @@ class WorldbuilderApiController extends Controller
     public function destroyShop(Shop $shop): JsonResponse
     {
         $feature = $shop->feature;
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
         $shop->delete();
 
         return response()->json($this->full($feature));
@@ -320,7 +428,7 @@ class WorldbuilderApiController extends Controller
 
     public function storeItem(Request $request, Feature $feature): JsonResponse
     {
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
 
         $data = $request->validate([
             'name' => 'required|string|max:80',
@@ -342,7 +450,7 @@ class WorldbuilderApiController extends Controller
     public function destroyItem(Item $item): JsonResponse
     {
         $feature = $item->feature;
-        $this->exigirDonoDoLocal($feature);
+        $this->exigirEditorDoLocal($feature);
         $item->delete();
 
         return response()->json($this->full($feature));

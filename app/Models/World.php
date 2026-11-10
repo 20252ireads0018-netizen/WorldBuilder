@@ -23,6 +23,7 @@ class World extends Model
         'theme' => 'array',
         'cover_version' => 'integer',
         'dimension' => 'integer',
+        'fog' => 'array',
     ];
 
     protected $attributes = ['visibility' => 'private', 'dimension' => 200];
@@ -44,7 +45,7 @@ class World extends Model
 
     public function players(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'wb_world_players', 'world_id', 'user_id')->withTimestamps();
+        return $this->belongsToMany(User::class, 'wb_world_players', 'world_id', 'user_id')->withPivot('papel')->withTimestamps();
     }
 
     public function ehDono(?User $u): bool
@@ -55,6 +56,50 @@ class World extends Model
     public function ehPublico(): bool
     {
         return $this->visibility === 'public';
+    }
+
+    /** 'dono', 'mestre' (convidado que edita e vê tudo), 'jogador' ou null. */
+    public function papel(?User $u): ?string
+    {
+        if ($u === null) {
+            return null;
+        }
+        if ($this->ehDono($u)) {
+            return 'dono';
+        }
+        $p = $this->players()->whereKey($u->id)->first();
+
+        return $p ? ($p->pivot->papel === 'mestre' ? 'mestre' : 'jogador') : null;
+    }
+
+    /** Dono ou mestre convidado: edita o mapa e vê segredos e névoa. */
+    public function podeEditar(?User $u): bool
+    {
+        return in_array($this->papel($u), ['dono', 'mestre'], true);
+    }
+
+    /** Névoa normalizada: ['ativo' => bool, 'areas' => [[x, z, r, 1|0], ...]] */
+    public function nevoa(): array
+    {
+        $n = is_array($this->fog) ? $this->fog : [];
+
+        return ['ativo' => (bool) ($n['ativo'] ?? false), 'areas' => array_values($n['areas'] ?? [])];
+    }
+
+    /** Um ponto está visível para os jogadores? (a última pincelada que cobre o ponto vence) */
+    public static function pontoVisivel(array $nevoa, float $x, float $z): bool
+    {
+        if (! $nevoa['ativo']) {
+            return true;
+        }
+        $vis = false;
+        foreach ($nevoa['areas'] as [$ax, $az, $r, $v]) {
+            if (($x - $ax) ** 2 + ($z - $az) ** 2 <= $r * $r) {
+                $vis = (bool) $v;
+            }
+        }
+
+        return $vis;
     }
 
     /** Dono, jogador convidado ou qualquer pessoa se o mundo for público. */

@@ -8,8 +8,12 @@ return [
     // Limites de cada nível. "dimensao" = lado do mapa em unidades (o padrão antigo era 200).
     'limites' => [
         'gratis' => ['mundos' => 2, 'dimensao' => 200],
-        'pago' => ['mundos' => 100, 'dimensao' => 600],
+        'pago' => ['mundos' => 100, 'dimensao' => 1000],
     ],
+
+    // Tamanho livre (número par, em unidades): menor e maior possíveis
+    'dimensao_min' => 100,
+    'dimensao_max' => 1000,
 
     // Tamanhos de mapa que o editor oferece
     'dimensoes' => [
@@ -18,6 +22,7 @@ return [
         300 => 'Grande',
         400 => 'Vasto',
         600 => 'Continente',
+        1000 => 'Mundo inteiro',
     ],
 
     // O que dá para comprar: dias = null é para sempre

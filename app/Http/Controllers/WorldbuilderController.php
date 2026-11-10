@@ -28,7 +28,7 @@ class WorldbuilderController extends Controller
             ->get();
 
         $compartilhados = World::whereHas('players', fn ($q) => $q->whereKey(Auth::id()))
-            ->with('owner:id,name')
+            ->with(['owner:id,name', 'players' => fn ($q) => $q->whereKey(Auth::id())])
             ->withCount('features')
             ->orderByDesc('updated_at')
             ->get();
@@ -57,13 +57,13 @@ class WorldbuilderController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:80'],
             'description' => ['nullable', 'string', 'max:1000'],
-            'dimension' => ['nullable', 'integer', \Illuminate\Validation\Rule::in(array_keys(config('planos.dimensoes')))],
+            'dimension' => ['nullable', 'integer', 'between:' . config('planos.dimensao_min') . ',' . config('planos.dimensao_max')],
         ]);
 
         if ($this->limiteAtingido()) {
             return $this->erroLimite();
         }
-        $dimensao = (int) ($data['dimension'] ?? 200);
+        $dimensao = MundoArquivo::dimensaoValida((int) ($data['dimension'] ?? 200));
         if ($r = $this->checarDimensao($dimensao)) {
             return $r;
         }
@@ -91,7 +91,7 @@ class WorldbuilderController extends Controller
     /** Editor: só o dono. Quem pode apenas ver vai para o visualizador. */
     public function show(World $world): View|RedirectResponse
     {
-        if (! $world->ehDono(Auth::user())) {
+        if (! $world->podeEditar(Auth::user())) {
             abort_unless($world->podeVer(Auth::user()), 404);
 
             return redirect()->route('worldbuilder.ver', $world);

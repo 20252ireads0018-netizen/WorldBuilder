@@ -467,7 +467,7 @@ body.wb-editor { height: 100vh; overflow: hidden; background: var(--night); }
     background: rgba(46, 30, 12, .08); border: 1px solid rgba(107, 81, 41, .25); border-radius: 6px;
 }
 .wb .tabs button {
-    flex: 1; border: 0; border-radius: 4px; padding: 6px 8px; font-size: 15px; font-weight: 600;
+    flex: 1; border: 0; border-radius: 4px; padding: 6px 5px; font-size: 14px; font-weight: 600;
     color: var(--ink-soft); background: none; white-space: nowrap;
 }
 .wb .tabs button:hover { color: var(--ink); background: rgba(255, 250, 232, .5); }
@@ -673,3 +673,44 @@ body.atlas-on { overflow: hidden; }
 .wb .ctx-menu button.perigo { color: var(--seal); }
 .wb .ctx-menu button.perigo:hover, .wb .ctx-menu button.perigo:focus-visible { background: var(--seal); color: #fdeccf; }
 .wb .ctx-menu hr { border: 0; border-top: 1px dotted rgba(107, 81, 41, .45); margin: 4px 6px; }
+
+/* ---------- Painel do lugar: modelos, cores, seções ---------- */
+.wb .lugar-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wb .tipo-troca { gap: 4px; }
+.wb .chip-btn { border-radius: 999px; padding: 3px 12px; font-size: 14px; }
+.wb .chip-btn.on { background: linear-gradient(180deg, #4a3217, #2a1b0b); color: var(--gold-2); border-color: #160d05; }
+.wb details.secao-lugar { margin-top: 16px; border-top: 1px solid rgba(107, 81, 41, .3); padding-top: 10px; }
+.wb details.secao-lugar > summary {
+    cursor: pointer; list-style: none; font-family: var(--f-titulo); font-size: 13px; font-weight: 700;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--ink-soft); display: flex; justify-content: space-between;
+}
+.wb details.secao-lugar > summary::-webkit-details-marker { display: none; }
+.wb details.secao-lugar > summary::after { content: '▾'; transition: transform .15s; }
+.wb details.secao-lugar:not([open]) > summary::after { transform: rotate(-90deg); }
+.wb .skin-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 6px; margin-top: 10px; }
+.wb .skin-card { flex-direction: column; align-items: stretch; gap: 5px; padding: 6px; font-size: 13px; font-weight: 600; text-align: center; border-radius: 6px; border-color: rgba(107, 81, 41, .45); line-height: 1.2; }
+.wb .skin-card i { display: block; height: 26px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25), inset 0 -8px 12px rgba(0, 0, 0, .18); }
+.wb .skin-card small { display: block; font-weight: 400; color: var(--ink-soft); font-size: 11px; }
+.wb .skin-card.on { border-color: var(--seal); box-shadow: 0 0 0 2px rgba(155, 47, 29, .35); background: rgba(255, 250, 232, .75); }
+.wb .rotulo-campo { font-size: 15px; color: var(--ink-soft); margin-top: 12px; font-weight: 500; }
+.wb .paleta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.wb .amostra-cor { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 250, 232, .9); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); margin: 0; cursor: pointer; }
+.wb .amostra-cor:hover { transform: scale(1.1); background-blend-mode: normal; }
+.wb .amostra-cor.on { box-shadow: 0 0 0 2px var(--seal), 0 0 0 4px rgba(155, 47, 29, .25); }
+.wb label.amostra-cor.livre { position: relative; overflow: hidden; background: conic-gradient(#e44, #ee4, #4e4, #4ee, #44e, #e4e, #e44); }
+.wb label.amostra-cor.livre input { position: absolute; inset: -6px; width: 44px; height: 44px; opacity: 0; cursor: pointer; padding: 0; border: 0; }
+.wb .range.com-botoes .passo { width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 17px; flex-shrink: 0; }
+.wb .dim-livre { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.wb .dim-livre input { width: 110px; }
+.wb .dim-livre span { color: var(--ink-soft); font-size: 14px; white-space: nowrap; }
+.wb .papel-jog { display: flex; gap: 4px; align-items: center; }
+.wb .papel-jog select { width: auto; font-size: 14px; padding: 3px 6px; }
+.wb #acoes .icone { width: 38px; padding: 6px 0; font-size: 18px; }
+.wb #acoes button:disabled { opacity: .4; cursor: default; }
+.wb .ctx-menu .bolinha { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); vertical-align: -1px; }
+.wb .ctx-menu button.atual { font-weight: 700; }
+.wb .ctx-menu button.atual::after { content: ' ✓'; }
+.wb .label.island { font-style: italic; font-size: 16px; letter-spacing: .06em; }
+.wb .label.road { font-style: italic; font-size: 13px; opacity: .9; }
+.wb .tool { padding: 7px 2px; }
+.wb .tool svg { width: 23px; height: 23px; }

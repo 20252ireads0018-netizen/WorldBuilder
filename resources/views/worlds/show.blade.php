@@ -40,6 +40,9 @@
         <button type="button" class="tool" data-tool="ocean">
             <svg viewBox="0 0 24 24"><path d="M2 9c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0M2 14c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0M2 19c2.5-2 4.5-2 7 0s4.5 2 7 0 4.5-2 6 0"/></svg>Oceano
         </button>
+        <button type="button" class="tool" data-tool="island">
+            <svg viewBox="0 0 24 24"><path d="M3 17c3-1 5-1 9-1s6 0 9 1M6 16c1-4 4-6 6-6s5 2 6 6M12 10V4l4 2-4 2"/></svg>Ilha
+        </button>
         <button type="button" class="tool" data-tool="mountain">
             <svg viewBox="0 0 24 24"><path d="M2 20l7-13 4 7 3-4 6 10z"/></svg>Montanha
         </button>
@@ -49,6 +52,9 @@
         <button type="button" class="tool" data-tool="river">
             <svg viewBox="0 0 24 24"><path d="M6 2c5 3-3 6 2 9s-3 5 1 11M15 2c4 4-2 6 1 10s-1 6 3 10"/></svg>Rio
         </button>
+        <button type="button" class="tool" data-tool="road">
+            <svg viewBox="0 0 24 24"><path d="M8 22L11 2M16 22L13 2M12 20v-2M12 14v-2M12 8V6"/></svg>Estrada
+        </button>
         <button type="button" class="tool" data-tool="forest">
             <svg viewBox="0 0 24 24"><path d="M7 21v-4M7 17l-4 0 4-7-3 0 3-6 3 6-3 0 4 7zM17 21v-3M17 18a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>Floresta
         </button>
@@ -57,6 +63,9 @@
         </button>
         <button type="button" class="tool" data-tool="village">
             <svg viewBox="0 0 24 24"><path d="M4 20v-8l8-7 8 7v8zM10 20v-5h4v5"/></svg>Vila
+        </button>
+        <button type="button" class="tool" data-tool="fog">
+            <svg viewBox="0 0 24 24"><path d="M4 10h13a3 3 0 1 0-3-3M3 14h17M6 18h11a3 3 0 1 1-3 3"/></svg>Névoa
         </button>
         @endif
     </nav>
@@ -70,11 +79,13 @@
         </div>
         <div id="acoes">
             @if($editar)
+                <button type="button" id="btn-desfazer" class="icone" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" disabled>↶</button>
+                <button type="button" id="btn-refazer" class="icone" title="Refazer (Ctrl+Y)" aria-label="Refazer" disabled>↷</button>
                 <button type="button" id="btn-salvar" class="primary">Salvar</button>
             @endif
             <button type="button" id="btn-imagem">Mapa ilustrado</button>
             @if(! $editar)
-                @if($world->ehDono(auth()->user()))
+                @if($world->podeEditar(auth()->user()))
                     <a class="btn primary" href="{{ route('worldbuilder.show', $world) }}">Editar</a>
                 @elseif($world->ehPublico())
                     @auth

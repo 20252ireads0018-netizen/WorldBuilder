@@ -365,12 +365,30 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         }
     }
 
+    // Estradas
+    for (const f of lugares.filter((l) => l.type === 'road')) {
+        const pts = C.rioPath(f); if (pts.length < 2) continue;
+        const skin = C.skinOf(f), cor = P.cor ? C.corOf(f) : (opt.estilo === 'noturno' ? '#c9a964' : '#a8865a');
+        const larg = Math.max(1.4, f.size * u * 1.1);
+        const caminho = () => { ctx.beginPath(); pts.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z)))); };
+        ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if (skin === 'trilha') {
+            caminho(); ctx.setLineDash([larg * 2.2, larg * 1.6]); ctx.strokeStyle = P.tinta; ctx.lineWidth = Math.max(1, larg * 0.6); ctx.stroke();
+        } else {
+            caminho(); ctx.strokeStyle = P.tinta; ctx.lineWidth = larg + (skin === 'real' ? 3.2 : 1.8); ctx.stroke();
+            caminho(); ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.stroke();
+            if (skin === 'real') { caminho(); ctx.setLineDash([6, 6]); ctx.strokeStyle = P.tinta; ctx.globalAlpha = 0.5; ctx.lineWidth = 0.8; ctx.stroke(); }
+            if (skin === 'pedra') { caminho(); ctx.setLineDash([1.5, 3]); ctx.strokeStyle = P.tinta; ctx.globalAlpha = 0.45; ctx.lineWidth = larg * 0.7; ctx.stroke(); }
+        }
+        ctx.restore();
+    }
+
     // Florestas
     for (const f of lugares.filter((l) => l.type === 'forest')) {
         const F = C.forma(f), r = rng(f.id * 7 + 3), skin = C.skinOf(f), cor = P.cor ? C.corOf(f) : null;
         const s = 9;
         const area = Math.PI * Math.pow(f.size * u, 2) * F.sx * F.sz;
-        const n = Math.min(1600, Math.round(area / (s * s * 0.42)));
+        const n = Math.min(2400, Math.round(area / (s * s * 0.42) * (f.shape?.densidade ?? 1)));
         const lista = [];
         for (let i = 0; i < n; i++) {
             const [x, z] = C.pontoDentro(f, r, F);
@@ -423,7 +441,7 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
             ctx.setLineDash([2, 3]); ctx.lineWidth = 4; ctx.globalAlpha = 0.5; ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
         }
         // casas espalhadas pela forma (cidades grandes)
-        const extras = cidade ? clamp(Math.round(f.size * u * Math.max(F.sx, F.sz) / 7), 3, 40) : clamp(Math.round(f.size * u / 5), 2, 7);
+        const extras = Math.round((cidade ? clamp(Math.round(f.size * u * Math.max(F.sx, F.sz) / 7), 3, 40) : clamp(Math.round(f.size * u / 5), 2, 7)) * (f.shape?.densidade ?? 1));
         const casas = [];
         for (let i = 0; i < extras; i++) {
             const [x, z] = C.pontoDentro(f, r, F, cidade ? 0.3 : 0.2, 0.85);
@@ -454,11 +472,48 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
             if (q === 1) serpente(ctx, x, y, 26, P); else navio(ctx, x, y, 18, P);
         }
     }
+    // Névoa de guerra: nuvens onde os jogadores ainda não chegaram
+    const comNevoa = C.nevoa?.ativo && (C.soJogador || opt.nevoa);
+    if (comNevoa) {
+        const nv = document.createElement('canvas'), Q = 600;
+        nv.width = nv.height = Q;
+        const nx = nv.getContext('2d');
+        const g0 = nx.createLinearGradient(0, 0, Q, Q);
+        g0.addColorStop(0, opt.estilo === 'noturno' ? '#1d2436' : '#d9cdb0'); g0.addColorStop(1, opt.estilo === 'noturno' ? '#252e44' : '#cfc2a3');
+        nx.fillStyle = g0; nx.fillRect(0, 0, Q, Q);
+        const rn = rng(77);
+        for (let i = 0; i < 90; i++) {
+            // nuvem: três arcos encostados
+            const x = rn() * Q, y = rn() * Q, rr = 5 + rn() * 9;
+            nx.beginPath(); nx.arc(x - rr, y, rr * 0.8, Math.PI, 0); nx.arc(x, y - rr * 0.3, rr, Math.PI, 0); nx.arc(x + rr * 1.1, y, rr * 0.75, Math.PI, 0);
+            nx.strokeStyle = opt.estilo === 'noturno' ? 'rgba(227,196,126,.2)' : 'rgba(74,48,21,.16)'; nx.lineWidth = 0.9; nx.stroke();
+        }
+        nx.globalCompositeOperation = 'destination-out';
+        for (const [x, z, r, v] of C.nevoa.areas) {
+            const cx = ((x + C.HALF) / C.SIZE) * Q, cy = ((z + C.HALF) / C.SIZE) * Q, rr = (r / C.SIZE) * Q;
+            nx.globalCompositeOperation = v ? 'destination-out' : 'source-over';
+            const g = nx.createRadialGradient(cx, cy, rr * 0.75, cx, cy, rr);
+            const base = opt.estilo === 'noturno' ? '33,40,60' : '214,201,172';
+            g.addColorStop(0, `rgba(${base},1)`); g.addColorStop(1, `rgba(${base},0)`);
+            nx.fillStyle = g; nx.beginPath(); nx.arc(cx, cy, rr, 0, PI2); nx.fill();
+        }
+        ctx.globalAlpha = C.soJogador ? 1 : 0.85;
+        ctx.drawImage(nv, mx, my, S, S);
+        ctx.globalAlpha = 1;
+    }
+    const visivel = (x, z) => {
+        if (!comNevoa) return true;
+        let vis = false;
+        for (const [ax, az, r, v] of C.nevoa.areas) if ((x - ax) ** 2 + (z - az) ** 2 <= r * r) vis = !!v;
+        return vis;
+    };
     ctx.restore(); // clip do mapa
 
     // Rótulos
     if (opt.nomes) {
         for (const f of lugares) {
+            if (f.shape?.semNome) continue;
+            if (!visivel(f.x, f.z) && !(f.points && f.points.some(([x, z]) => visivel(x, z)))) continue;
             let x = X(f.x), y = Y(f.z), ang = 0;
             const T = f.type;
             let fonte, cor = P.tinta, esp = 0;
@@ -479,12 +534,14 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
                 case 'forest': fonte = `italic ${clamp(12 + f.size * 0.15, 13, 20)}px 'IM Fell English', Georgia, serif`; esp = 1.5; break;
                 case 'lake': fonte = `italic ${clamp(12 + f.size * 0.2, 13, 22)}px 'IM Fell English', Georgia, serif`; cor = P.tintaAgua; esp = 3; break;
                 case 'ocean': fonte = `italic ${clamp(18 + f.size * 0.12, 22, 44)}px 'IM Fell English', Georgia, serif`; cor = P.tintaAgua; esp = 8; break;
+                case 'island': fonte = `italic ${clamp(13 + f.size * 0.15, 14, 24)}px 'IM Fell English', Georgia, serif`; esp = 2; break;
+                case 'road':
                 case 'river': {
                     const pts = C.rioPath(f), a = pts[Math.floor(pts.length * 0.45)], b = pts[Math.min(pts.length - 1, Math.floor(pts.length * 0.45) + 3)];
                     if (!a || !b) continue;
                     x = X(a[0]); y = Y(a[1]); ang = Math.atan2(Y(b[1]) - y, X(b[0]) - x);
                     if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
-                    fonte = `italic 13px 'IM Fell English', Georgia, serif`; cor = P.tintaAgua; esp = 1;
+                    fonte = `italic 13px 'IM Fell English', Georgia, serif`; cor = T === 'road' ? P.tinta : P.tintaAgua; esp = 1;
                     y -= 8;
                     break;
                 }
@@ -649,7 +706,7 @@ function barraEscala(ctx, x, y, u, size, P) {
 }
 
 function legenda(ctx, xd, y, lugares, P, C) {
-    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', river: 'Rio', lake: 'Lago', ocean: 'Mar' };
+    const NOMES = { city: 'Cidade', village: 'Vila', mountain: 'Montanha', forest: 'Floresta', road: 'Estrada', river: 'Rio', lake: 'Lago', ocean: 'Mar', island: 'Ilha' };
     const tipos = Object.keys(NOMES).filter((t) => lugares.some((l) => l.type === t));
     if (!tipos.length) return;
     const w = 150, h = 26 + tipos.length * 22, x = xd - w;
@@ -667,6 +724,8 @@ function legenda(ctx, xd, y, lugares, P, C) {
         else {
             ctx.fillStyle = P.agua; ctx.strokeStyle = P.tinta;
             if (t === 'river') { ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(ix - 9, yy); ctx.quadraticCurveTo(ix, yy - 6, ix + 9, yy); ctx.strokeStyle = P.agua; ctx.stroke(); }
+            else if (t === 'road') { ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(ix - 10, yy + 2); ctx.lineTo(ix + 10, yy - 2); ctx.strokeStyle = '#a8865a'; ctx.stroke(); ctx.lineWidth = 0.8; ctx.strokeStyle = P.tinta; ctx.stroke(); }
+            else if (t === 'island') { ctx.beginPath(); ctx.ellipse(ix, yy, 11, 7, 0, 0, PI2); ctx.fillStyle = P.agua; ctx.fill(); ctx.beginPath(); ctx.ellipse(ix, yy, 6, 4, 0, 0, PI2); ctx.fillStyle = P.terra; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = P.tinta; ctx.stroke(); }
             else { ctx.beginPath(); ctx.ellipse(ix, yy, 10, 6, 0, 0, PI2); ctx.fill(); ctx.lineWidth = 1; ctx.stroke(); }
         }
         ctx.fillStyle = P.tinta; ctx.font = `14px 'IM Fell English', Georgia, serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -711,7 +770,7 @@ function montarDom() {
             <div class="chips atlas-estilos">${Object.entries(ESTILOS).map(([k, e]) => `<label class="chip"><input type="radio" name="atlas-estilo" value="${k}">${e.nome}</label>`).join('')}</div>
             <h3>Mostrar</h3>
             <div class="atlas-opcoes">
-                ${[['nomes', 'Nomes dos lugares'], ['titulo', 'Título em faixa'], ['moldura', 'Moldura decorada'], ['rosa', 'Rosa-dos-ventos'], ['escala', 'Escala em léguas'], ['legenda', 'Legenda'], ['grade', 'Grade de coordenadas'], ['relevo', 'Curvas de relevo'], ['mar', 'Navios e serpentes no mar'], ['segredos', 'Lugares secretos']]
+                ${[['nomes', 'Nomes dos lugares'], ['titulo', 'Título em faixa'], ['moldura', 'Moldura decorada'], ['rosa', 'Rosa-dos-ventos'], ['escala', 'Escala em léguas'], ['legenda', 'Legenda'], ['grade', 'Grade de coordenadas'], ['relevo', 'Curvas de relevo'], ['mar', 'Navios e serpentes no mar'], ['nevoa', 'Névoa dos jogadores'], ['segredos', 'Lugares secretos']]
                     .map(([k, l]) => `<label class="wb-check" data-op="${k}"><input type="checkbox" data-o="${k}"> ${l}</label>`).join('')}
             </div>
             <h3>Arquivo</h3>
@@ -788,6 +847,7 @@ function sincronizarLado() {
     });
     el.querySelectorAll('input[name="atlas-estilo"]').forEach((i) => { i.checked = i.value === opt.estilo; i.parentElement.classList.toggle('on', i.checked); });
     el.querySelector('[data-op="segredos"]').hidden = !C.EDIT || !C.features.some((f) => f.secret);
+    el.querySelector('[data-op="nevoa"]').hidden = !C.EDIT || !C.nevoa?.ativo;
 }
 
 function prepararCampo() {
@@ -802,6 +862,7 @@ function dimensionarCanvas() {
 
 // Desenha a página inteira numa tela fora da vista, numa resolução que acompanha o zoom
 function refazer(escalaMin) {
+    if (!campo) return; // ainda calculando o terreno
     L = layout();
     const cv = el.querySelector('canvas'), dpr = Math.min(2, window.devicePixelRatio || 1);
     const precisa = clamp(Math.max(escalaMin || 0, view.z * dpr * 1.25, 1.6), 1, 4.4);

@@ -119,7 +119,7 @@ class PlanosTest extends TestCase
 
         $dados = $this->getJson("/api/worlds/{$w->id}/data")->assertOk()->json();
         $this->assertSame(400, $dados['world']['dimension']);
-        $this->assertSame(600, $dados['world']['plano']['dimensao_max']);
+        $this->assertSame(1000, $dados['world']['plano']['dimensao_max']);
 
         // Exportar e importar levam o tamanho e o formato
         $copia = MundoArquivo::importar(MundoArquivo::exportar($w), $u->id);

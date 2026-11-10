@@ -29,14 +29,21 @@ const TYPES = {
     city:     { label: 'Cidade',   fresh: 'Cidade sem nome',   size: [3, 24, 7, 0.5],    sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
     village:  { label: 'Vila',     fresh: 'Vila sem nome',     size: [2, 10, 3.5, 0.5],  sizeLabel: 'Extensão', corLabel: 'Cor dos telhados' },
     ocean:    { label: 'Oceano',   fresh: 'Mar sem nome',      size: [20, 100, 55, 1],   sizeLabel: 'Extensão', corLabel: 'Cor do mar' },
+    island:   { label: 'Ilha',     fresh: 'Ilha sem nome',     size: [4, 60, 14, 1],     sizeLabel: 'Extensão', corLabel: 'Cor do chão' },
+    road:     { label: 'Estrada',  fresh: 'Estrada sem nome',  size: [0.6, 5, 1.4, 0.1], sizeLabel: 'Largura',  corLabel: 'Cor da estrada' },
 };
+const LINHA = new Set(['river', 'road']);
+const DESENHO = new Set(['river', 'road', 'redraw']); // ferramentas que marcam pontos e terminam com Enter
+// Trocas de tipo que não perdem nada (as mesmas do servidor)
+const GRUPOS = [['city', 'village'], ['lake', 'ocean'], ['river', 'road'], ['mountain', 'island']];
+const trocasDe = (t) => GRUPOS.find((g) => g.includes(t)) || [t];
 // Tamanho máximo cresce com o mapa
 function tamanhoMax(type) {
     const base = TYPES[type].size[1];
-    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03 }[type];
+    const k = { ocean: 1, lake: 0.4, mountain: 0.35, forest: 0.4, city: 0.12, village: 0.05, river: 0.03, island: 0.5, road: 0.02 }[type];
     return Math.max(base, Math.round(Math.max(60, HALF) * k));
 }
-const PLURAL = { ocean: 'Oceanos e mares', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
+const PLURAL = { ocean: 'Oceanos e mares', island: 'Ilhas', mountain: 'Montanhas', lake: 'Lagos', river: 'Rios', road: 'Estradas', forest: 'Florestas', city: 'Cidades', village: 'Vilas' };
 const HINTS = {
     select:   'Clique num lugar para abri-lo; botão direito num lugar abre o menu rápido (excluir, aumentar, mover...). Arraste para girar, role para aproximar.',
     mountain: 'Clique no mapa para erguer uma montanha. Clique de novo dentro dela para aumentar.',
@@ -46,7 +53,10 @@ const HINTS = {
     city:     'Clique no mapa para fundar uma cidade. Clique de novo dentro dela para aumentar.',
     village:  'Clique no mapa para fundar uma vila. Clique de novo dentro dela para aumentar.',
     ocean:    'Clique no mapa para abrir um oceano. Clique de novo dentro dele para aumentar; montanhas dentro dele viram ilhas.',
-    redraw:   'Clique para marcar o novo curso do rio e aperte Enter (ou Concluir) para trocar. Esc cancela.',
+    redraw:   'Clique para marcar o novo traçado e aperte Enter (ou Concluir) para trocar. Esc cancela.',
+    island:   'Clique no mapa (ou no meio do mar) para erguer uma ilha. Clique de novo dentro dela para aumentar.',
+    road:     'Clique para marcar o caminho da estrada e aperte Enter para concluir.',
+    fog:      'Pinte o mapa: clique e arraste para revelar (ou cobrir) áreas para os jogadores.',
     move:     'Clique no novo ponto do mapa para levar o lugar até lá. Esc cancela.',
 };
 const VIEW_HINT = 'Clique num lugar para ver a história dele. Arraste para girar, role para aproximar.';
@@ -59,22 +69,38 @@ const SKINS = {
     forest: { carvalhos: 'Carvalhos', pinheiros: 'Pinheiros', outono: 'Outono', morta: 'Mata morta', magica: 'Mágica' },
     city: POVOADO, village: POVOADO,
     ocean: { mar: 'Mar aberto', tropical: 'Tropical', tempestuoso: 'Tempestuoso', gelado: 'Gelado', abissal: 'Abissal' },
+    island: { verde: 'Verdejante', areia: 'Praia de areia', tropical: 'Tropical', vulcanica: 'Vulcânica', gelo: 'Gelada' },
+    road: { terra: 'Estrada de terra', pedra: 'Calçada de pedra', trilha: 'Trilha', real: 'Estrada real' },
 };
 // Cor própria de cada skin (null = cor do tema: montanha ou água)
 const SKIN_COR = {
     mountain: { classica: null, picos: null, vulcao: '#4b3b36', colinas: '#7f9a56', rochosa: '#7c7468', cristal: '#6d5a8a' },
     lake: { calma: null, cristalina: null, congelada: '#cfe6ef', pantano: '#5d6b3a', lava: '#e2561c' },
-    forest: { carvalhos: '#4f7a3a', pinheiros: '#2f5a3a', outono: '#c86a28', morta: '#6a5a48', magica: '#3fc6b0' },
-    city: { medieval: '#9a4a2c', elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
+    forest: { carvalhos: null, pinheiros: '#2f5a3a', outono: '#c86a28', morta: '#6a5a48', magica: '#3fc6b0' },
+    island: { verde: '#7fa65a', areia: '#e3cf92', tropical: '#9cc95a', vulcanica: '#4d4240', gelo: '#e6edf2' },
+    road: { terra: null, pedra: '#a39a8a', trilha: '#93744c', real: '#c7ad78' },
+    city: { medieval: null, elfica: '#4d7a4a', deserto: '#3f6f9a', nordica: '#4a4136', fortaleza: '#7a3a2a', oriental: '#a8322a', ruinas: '#9a958a' },
     ocean: { mar: null, tropical: '#2aa6b8', tempestuoso: '#3d5260', gelado: '#a8cfdf', abissal: '#163452' },
 };
 SKIN_COR.river = SKIN_COR.lake;
 SKIN_COR.village = SKIN_COR.city;
+// Cores sugeridas no painel de cada tipo
+const PALETAS = {
+    mountain: ['#9a7b52', '#7c7468', '#4b3b36', '#8c9aa8', '#7f9a56', '#a0603a', '#6d5a8a', '#d8d2c4'],
+    lake: ['#7f9f93', '#3f86a8', '#2aa6b8', '#58b4c9', '#163452', '#5d6b3a', '#cfe6ef', '#e2561c'],
+    forest: ['#4f7a3a', '#2f5a3a', '#6f8f2f', '#9cbf4a', '#c86a28', '#a33a2a', '#6a5a48', '#3fc6b0'],
+    city: ['#9a4a2c', '#4d7a4a', '#3f6f9a', '#4a4136', '#7a3a2a', '#a8322a', '#c9a23a', '#6b5a8a'],
+    island: ['#7fa65a', '#e3cf92', '#9cc95a', '#c2b280', '#4d4240', '#e6edf2'],
+    road: ['#8a6a44', '#a39a8a', '#93744c', '#c7ad78', '#5a4a3a', '#d8c8a8'],
+};
+PALETAS.river = PALETAS.ocean = PALETAS.lake;
+PALETAS.village = PALETAS.city;
+const corDaSkin = (f, k) => corOf({ ...f, skin: k, color: null });
 const WS = { calma: 0, cristalina: 1, congelada: 2, pantano: 3, lava: 4, mar: 5, tropical: 1, tempestuoso: 5, gelado: 2, abissal: 5 };
 
 const FUNDOS = { pergaminho: 'Pergaminho', oceano: 'Ilha no oceano', noite: 'Céu noturno', nevoa: 'Névoa', cor: 'Cor sólida' };
 const ESTILOS = { pergaminho: 'Pergaminho', natural: 'Natural', ilustrado: 'Ilustrado' };
-const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', tinta: 'Tinta e contornos' };
+const CORES = { fundo: 'Fundo', terra: 'Terra', montanha: 'Montanhas', agua: 'Lagos e rios', floresta: 'Florestas', telhado: 'Telhados', estrada: 'Estradas', tinta: 'Tinta e contornos' };
 const TEMAS = {
     pergaminho: { label: 'Pergaminho antigo', fundo: 'pergaminho', estilo: 'pergaminho', cores: { fundo: '#2a1c10', terra: '#e3c47e', montanha: '#9a7b52', agua: '#7f9f93', tinta: '#4d3017' } },
     verde:      { label: 'Terras verdes',     fundo: 'oceano',     estilo: 'natural',    cores: { fundo: '#1d4e6e', terra: '#7fa65a', montanha: '#7d6a58', agua: '#3f86a8', tinta: '#2c3a24' } },
@@ -103,6 +129,9 @@ function corOf(f) {
     if (f.type === 'mountain') return theme.cores.montanha;
     if (f.type === 'lake' || f.type === 'river') return theme.cores.agua;
     if (f.type === 'ocean') return '#' + new THREE.Color(theme.cores.agua).multiplyScalar(0.72).getHexString();
+    if (f.type === 'forest') return theme.cores.floresta || '#4f7a3a';
+    if (f.type === 'city' || f.type === 'village') return theme.cores.telhado || '#9a4a2c';
+    if (f.type === 'road') return theme.cores.estrada || '#8a6a44';
     return '#888888';
 }
 const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
@@ -239,10 +268,11 @@ function riverDist(f, x, z) {
 }
 
 // Locais pré-processados (skin e cor resolvidas) para o laço por vértice
-let prep = { mountains: [], waters: [], agua: [0.5, 0.6, 0.6], oceano: false };
+let prep = { mountains: [], islands: [], waters: [], agua: [0.5, 0.6, 0.6], oceano: false };
 function prepare() {
     prep = {
-        mountains: features.filter((f) => f.type === 'mountain').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)) })),
+        mountains: features.filter((f) => f.type === 'mountain').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 })),
+        islands: features.filter((f) => f.type === 'island').map((f) => ({ f, F: forma(f), skin: skinOf(f), c: rgb(corOf(f)), alt: f.shape?.altura ?? 1 })),
         // oceanos primeiro: lagos e rios desenhados por cima continuam visíveis
         waters: features.filter((f) => f.type === 'ocean').concat(features.filter((f) => f.type === 'lake' || f.type === 'river'))
             .map((f) => ({ f, F: forma(f), ws: WS[skinOf(f)] ?? 0, c: rgb(corOf(f)) })),
@@ -288,7 +318,7 @@ function sample(x, z) {
     const o = { h: baseNoise(x, z), w: 0, wc: prep.agua, ws: 0, m: 0, mc: [0, 0, 0], snow: 0, lava: 0, sea: 0 };
     let hm = 0, mr = 0, mg = 0, mb = 0;
     for (const m of prep.mountains) {
-        const c = mountainHeight(m, x, z, o);
+        const c = mountainHeight(m, x, z, o) * m.alt;
         if (c > 0.01) { hm += c; mr += m.c[0] * c; mg += m.c[1] * c; mb += m.c[2] * c; }
     }
     o.h += hm;
@@ -332,6 +362,25 @@ function sample(x, z) {
         o.sea = sm(0.78, 0.88, r);
         if (o.sea > o.w) { o.w = o.sea; o.wc = prep.agua; o.ws = 0; }
     }
+
+    // Ilhas: terra firme por cima de qualquer água, com praia em volta
+    let ilha = 0, ic = null, ih = 0;
+    for (const il of prep.islands) {
+        const dn = distN(il.f, x, z, il.F);
+        if (dn >= 1.15) continue;
+        const a = sm(1.15, 0.8, dn);
+        if (a > ilha) {
+            ilha = a; ic = il.c;
+            ih = 0.6 + il.alt * (il.f.size * 0.09) * sm(1, 0.15, dn) * (0.85 + 0.15 * Math.sin(x * 0.4) * Math.cos(z * 0.35));
+            if (il.skin === 'vulcanica') ih += il.alt * il.f.size * 0.12 * sm(0.6, 0.1, dn);
+        }
+    }
+    if (ilha > 0) {
+        o.h = o.h * (1 - ilha) + Math.max(o.h, ih) * ilha;
+        const seco = sm(0.25, 0.75, ilha);
+        o.w *= 1 - seco; o.sea *= 1 - seco;
+        if (ic && hm < 1) { o.m = Math.max(o.m, seco * 0.85); o.mc = ic; }
+    }
     return o;
 }
 const heightAt = (x, z) => sample(x, z).h;
@@ -374,6 +423,7 @@ const uniforms = {
     uTime: { value: 0 }, uEstilo: { value: 0 }, uFundo: { value: 0 }, uHalf: { value: 100 },
     uTerra: { value: new THREE.Color() }, uTinta: { value: new THREE.Color() },
     uFundoCor: { value: new THREE.Color() }, uAgua: { value: new THREE.Color() },
+    uFog: { value: null }, uFogOn: { value: 0 }, uFogAlpha: { value: 1 },
 };
 const material = new THREE.ShaderMaterial({
     uniforms,
@@ -388,6 +438,7 @@ const material = new THREE.ShaderMaterial({
         precision highp float;
         uniform float uTime; uniform float uEstilo; uniform float uFundo;
         uniform vec3 uTerra; uniform vec3 uTinta; uniform vec3 uFundoCor; uniform vec3 uAgua;
+        uniform sampler2D uFog; uniform float uFogOn; uniform float uFogAlpha;
         varying float vW; varying float vH; varying float vM; varying vec3 vWCol; varying vec3 vMCol; varying vec4 vFx;
         varying vec3 vN; varying vec3 vP;
         uniform float uHalf;
@@ -491,6 +542,14 @@ const material = new THREE.ShaderMaterial({
                 col = mix(col, uFundoCor, smoothstep(0.88,1.02,length(vP.xz)/uHalf));
             } else {
                 col = mix(col, uFundoCor, smoothstep(0.8,1.06,r));
+            }
+            // névoa de guerra (branco na máscara = revelado)
+            if (uFogOn > 0.5) {
+                vec2 fuv = vP.xz / (2.0*uHalf) + 0.5;
+                float vis = texture2D(uFog, fuv).r;
+                float nv = noise(vP.xz*0.045 + vec2(uTime*0.015, uTime*0.01))*0.6 + noise(vP.xz*0.15 - uTime*0.02)*0.4;
+                vec3 fogc = mix(vec3(0.70,0.68,0.64), vec3(0.93,0.92,0.89), nv);
+                col = mix(col, fogc, (1.0 - vis) * uFogAlpha);
             }
             gl_FragColor = vec4(col, 1.0);
         }`,
@@ -715,10 +774,11 @@ function povoado(f) {
     const g = new THREE.Group(), r = rng(f.id + 11), city = f.type === 'city';
     const skin = skinOf(f), roof = corOf(f);
     const F = forma(f);
-    const n = Math.min(260, city ? Math.round(8 + f.size * 1.6 * (1 + f.size / 20)) : Math.round(3 + f.size * (1 + f.size / 12)));
+    const dens = f.shape?.densidade ?? 1;
+    const n = Math.min(400, Math.round((city ? 8 + f.size * 1.6 * (1 + f.size / 20) : 3 + f.size * (1 + f.size / 12)) * dens));
     for (let i = 0; i < n; i++) {
         const [x, z] = city ? pontoDentro(f, r, F, 0.18, 0.78) : pontoDentro(f, r, F, 0, 0.75);
-        if (sample(x, z).w > 0.3) continue;
+        if (sample(x, z).w > 0.3 || !visivelAgora(x, z)) continue;
         const w = city ? 1.4 + r() * 1.4 : 1.1 + r() * 0.8;
         const h = city ? 1.6 + r() * 2.2 : 1.0 + r() * 0.9;
         const m = casa(skin, roof, w, h, w * (0.8 + r() * 0.5), r);
@@ -726,12 +786,12 @@ function povoado(f) {
         m.rotation.y = r() * Math.PI;
         g.add(m);
     }
-    if (city) {
+    if (city && visivelAgora(f.x, f.z)) {
         const t = marco(skin, roof);
         t.position.set(f.x, Math.max(heightAt(f.x, f.z), 0.2) - 0.05, f.z);
         g.add(t);
     }
-    if (skin === 'fortaleza') muralha(f, g);
+    if (skin === 'fortaleza' && visivelAgora(f.x, f.z)) muralha(f, g);
     props.add(g);
 }
 
@@ -755,11 +815,11 @@ const corVar = (hex, r, k = 0.18) => '#' + new THREE.Color(hex).offsetHSL((r() -
 
 function floresta(f) {
     const r = rng(f.id * 7 + 3), skin = skinOf(f), cor = corOf(f), F = forma(f);
-    const n = Math.min(900, Math.round(f.size * f.size * 0.38 + 6));
+    const n = Math.min(1600, Math.round((f.size * f.size * 0.38 + 6) * (f.shape?.densidade ?? 1)));
     const troncos = [], copas = [], galhos = [];
     for (let i = 0; i < n; i++) {
         const [x, z] = pontoDentro(f, r, F);
-        if (Math.abs(x) > HALF - 2 || Math.abs(z) > HALF - 2) continue;
+        if (Math.abs(x) > HALF - 2 || Math.abs(z) > HALF - 2 || !visivelAgora(x, z)) continue;
         const s = sample(x, z);
         if (s.w > 0.15) continue;
         const y = s.h - 0.1, k = 0.75 + r() * 0.6;
@@ -806,6 +866,7 @@ function enfeitesMontanha(f) {
     const n = Math.round(f.size * (skin === 'rochosa' ? 1.3 : 0.9));
     for (let i = 0; i < n; i++) {
         const [x, z] = pontoDentro(f, r, F, 0, skin === 'rochosa' ? 0.65 : 0.45), y = heightAt(x, z);
+        if (!visivelAgora(x, z)) continue;
         if (skin === 'rochosa') {
             const s = 0.6 + r() * 1.8;
             lista.push({ x, y: y - s * 0.3, z, sx: s, sy: s * (0.6 + r() * 0.6), sz: s, ry: r() * 6, rx: r(), c: corVar(cor, r, 0.12) });
@@ -826,9 +887,42 @@ function juncos(f) {
     for (let i = 0; i < n; i++) {
         const a = r() * Math.PI * 2, d = f.size * (0.85 + r() * 0.3) * borda(F, a);
         const [x, z] = paraMundo(f, Math.cos(a) * d, Math.sin(a) * d, F);
+        if (!visivelAgora(x, z)) continue;
         lista.push({ x, y: heightAt(x, z) - 0.1, z, sx: 0.05, sy: 0.8 + r() * 0.9, sz: 0.05, rz: (r() - 0.5) * 0.4, c: corVar('#7a8a3a', r, 0.2) });
     }
     instancias(G.cyl, new THREE.MeshLambertMaterial({ color: 0xffffff }), lista);
+}
+
+// Estrada: faixa que acompanha o relevo (trilha = tracejada; real = com margens)
+function estrada(f) {
+    const pts = rioPath(f);
+    if (pts.length < 2) return;
+    const skin = skinOf(f), cor = corOf(f), w = f.size;
+    const faixa = (largura, hex, dy, tracejada) => {
+        const pos = [], idx = [];
+        let k = 0;
+        for (let i = 0; i < pts.length; i++) {
+            if (tracejada && Math.floor(i / 2) % 2) continue;
+            if (!visivelAgora(pts[i][0], pts[i][1])) continue;
+            const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+            const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l, nz = dx / l;
+            for (const s of [-1, 1]) {
+                const x = pts[i][0] + nx * largura / 2 * s, z = pts[i][1] + nz * largura / 2 * s;
+                pos.push(x, Math.max(heightAt(x, z), -0.1) + dy, z);
+            }
+            if (k > 0 && (!tracejada || Math.floor((i - 1) / 2) % 2 === 0)) idx.push(k * 2 - 2, k * 2 - 1, k * 2, k * 2 - 1, k * 2 + 1, k * 2);
+            k++;
+        }
+        if (k < 2) return;
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        const m = new THREE.MeshLambertMaterial({ color: hex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+        props.add(new THREE.Mesh(g, m));
+    };
+    if (skin === 'real') faixa(w * 1.5, '#' + new THREE.Color(cor).multiplyScalar(0.6).getHexString(), 0.1, false);
+    faixa(w, cor, 0.16, skin === 'trilha');
 }
 
 function buildProps() {
@@ -841,6 +935,7 @@ function buildProps() {
         else if (f.type === 'forest') floresta(f);
         else if (f.type === 'mountain') enfeitesMontanha(f);
         else if (f.type === 'lake') juncos(f);
+        else if (f.type === 'road') estrada(f);
     }
 }
 
@@ -849,11 +944,11 @@ const labelsEl = $('#labels');
 const labels = new Map();
 function anchor(f) {
     let x = f.x, z = f.z;
-    if (f.type === 'river' && f.points?.length) {
+    if (LINHA.has(f.type) && f.points?.length) {
         const pts = rioPath(f), p = pts[Math.floor(pts.length / 2)];
         x = p[0]; z = p[1];
     }
-    const up = { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1 }[f.type];
+    const up = { mountain: 1.5, lake: 1, river: 1, forest: 3.5, city: 7, village: 3.5, ocean: 1, island: 2, road: 1 }[f.type];
     return new THREE.Vector3(x, heightAt(x, z) + up, z);
 }
 function labelHtml(f) {
@@ -870,11 +965,14 @@ function syncLabels() {
     labelsEl.innerHTML = '';
     labels.clear();
     for (const f of features) {
+        if (f.shape?.semNome && f.id !== selectedId) continue;
+        const a = anchor(f);
+        if (!visivelAgora(a.x, a.z)) continue;
         const el = document.createElement('div');
         el.className = 'label ' + f.type + (f.id === selectedId ? ' sel' : '') + (f.secret ? ' secreto' : '');
         el.innerHTML = labelHtml(f);
         labelsEl.appendChild(el);
-        labels.set(f.id, { el, pos: anchor(f), f });
+        labels.set(f.id, { el, pos: a, f });
     }
 }
 function markSelectedLabel() {
@@ -902,14 +1000,14 @@ const selMat = new THREE.LineBasicMaterial({ color: 0x8a2d1c, depthTest: false }
 const draftMat = new THREE.PointsMaterial({ color: 0x8a2d1c, size: 7, sizeAttenuation: false, depthTest: false });
 
 function lift(x, z, dy = 0.7) { return new THREE.Vector3(x, heightAt(x, z) + dy, z); }
-const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1, ocean: 1.02 };
+const RAIO = { mountain: 0.7, lake: 1.08, forest: 1.05, city: 1.1, village: 1.1, ocean: 1.02, island: 1.02 };
 
 function updateSelection() {
     selGroup.clear();
     const f = sel();
     if (!f) return;
     let obj;
-    if (f.type === 'river') {
+    if (LINHA.has(f.type)) {
         obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(rioPath(f).map((p) => lift(p[0], p[1]))), selMat);
     } else {
         const F = forma(f), r = f.size * RAIO[f.type], pts = [];
@@ -948,10 +1046,11 @@ const finishBtn = $('#finish-river');
 function setTool(t) {
     tool = t;
     document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
-    if (t !== 'river' && t !== 'redraw') cancelDraft();
+    if (!DESENHO.has(t)) cancelDraft();
     hintText.textContent = EDIT ? HINTS[t] : VIEW_HINT;
-    finishBtn.hidden = t !== 'river' && t !== 'redraw';
-    finishBtn.textContent = t === 'redraw' ? 'Trocar o curso' : 'Concluir rio';
+    finishBtn.hidden = !DESENHO.has(t);
+    finishBtn.textContent = t === 'redraw' ? 'Trocar o traçado' : t === 'road' ? 'Concluir estrada' : 'Concluir rio';
+    if (t === 'fog' && tab !== 'nevoa') { tab = 'nevoa'; renderPanel(); }
     canvas.style.cursor = t === 'select' ? 'grab' : 'crosshair';
 }
 document.querySelectorAll('.tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
@@ -966,13 +1065,70 @@ function pick(e) {
     return hit ? { x: Math.round(hit.point.x * 100) / 100, z: Math.round(hit.point.z * 100) / 100 } : null;
 }
 function reach(f, x, z) {
-    if (f.type === 'river') return riverDist(f, x, z) / (f.size * 1.8 + 1);
+    if (LINHA.has(f.type)) return riverDist(f, x, z) / (f.size * 1.8 + 1);
     return distN(f, x, z) / RAIO[f.type];
 }
 
-let down = null, ultimoDown = null;
-canvas.addEventListener('pointerdown', (e) => { down = ultimoDown = { x: e.clientX, y: e.clientY }; fecharMenu(); });
-canvas.addEventListener('pointerup', (e) => {
+let down = null, ultimoDown = null, arrasto = null, pintando = null, arrastoT = 0;
+const noMapa = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
+canvas.addEventListener('pointerdown', (e) => {
+    down = ultimoDown = { x: e.clientX, y: e.clientY };
+    fecharMenu();
+    if (!EDIT || e.button !== 0) return;
+    const p = pick(e);
+    if (!p) return;
+    if (tool === 'fog') {
+        pintando = { v: fogModo === 'revelar' ? 1 : 0, antes: clonar(world.fog), ultimo: null };
+        controls.enabled = false;
+        pincelar(p);
+        return;
+    }
+    // Arrastar o lugar já selecionado leva ele junto
+    const f = tool === 'select' ? lugarEm(p) : null;
+    if (f && f.id === selectedId) {
+        arrasto = { f, p0: p, x0: f.x, z0: f.z, pts0: f.points ? f.points.map((q) => [...q]) : null, moveu: false };
+        controls.enabled = false;
+        canvas.style.cursor = 'grabbing';
+    }
+});
+canvas.addEventListener('pointermove', (e) => {
+    if (pintando) { const p = pick(e); if (p) pincelar(p); return; }
+    if (!arrasto) return;
+    const p = pick(e);
+    if (!p) return;
+    const dx = p.x - arrasto.p0.x, dz = p.z - arrasto.p0.z;
+    if (!arrasto.moveu && Math.hypot(dx, dz) < 0.6) return;
+    arrasto.moveu = true;
+    const f = arrasto.f;
+    f.x = noMapa(arrasto.x0 + dx); f.z = noMapa(arrasto.z0 + dz);
+    if (arrasto.pts0) f.points = arrasto.pts0.map(([x, z]) => [noMapa(x + dx), noMapa(z + dz)]);
+    const agora = performance.now();
+    if (agora - arrastoT > 140) { arrastoT = agora; rebuildAll(); }
+    else { syncLabels(); updateSelection(); }
+});
+canvas.addEventListener('pointerup', async (e) => {
+    if (pintando) {
+        const pin = pintando; pintando = null;
+        controls.enabled = true; down = null;
+        await salvarNevoa(pin.antes, pin.v ? 'revelar área' : 'cobrir área');
+        return;
+    }
+    if (arrasto) {
+        const a = arrasto; arrasto = null;
+        controls.enabled = true; canvas.style.cursor = 'grab';
+        if (a.moveu) {
+            down = null;
+            const f = a.f, depois = { x: f.x, z: f.z }, antes = { x: a.x0, z: a.z0 };
+            if (a.pts0) { depois.points = f.points; antes.points = a.pts0; }
+            rebuildAll();
+            try {
+                const u = await api('PUT', `${API}/features/${f.id}`, depois);
+                replaceFeature(u, { rebuild: false });
+                registrarMudanca(f.id, antes, depois, 'mover ' + f.name);
+            } catch { Object.assign(f, antes); rebuildAll(); }
+            return;
+        }
+    }
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     down = null;
@@ -1002,7 +1158,9 @@ function lugarEm(p) {
 function onMapClick(p) {
     if (tool === 'select' || !EDIT) {
         select(lugarEm(p)?.id ?? null);
-    } else if (tool === 'river' || tool === 'redraw') {
+    } else if (tool === 'fog') {
+        // a pintura acontece no pointerdown/pointermove
+    } else if (DESENHO.has(tool)) {
         riverDraft.push([p.x, p.z]);
         updateDraft();
     } else if (tool === 'move') {
@@ -1033,8 +1191,7 @@ async function aumentar(f, k, avisar = false) {
         toast(k > 1 ? `${TYPES[f.type].label} já está no tamanho máximo deste mapa.` : `${TYPES[f.type].label} já está no tamanho mínimo.`);
         return;
     }
-    const u = await api('PUT', `${API}/features/${f.id}`, { size: Number(novo.toFixed(2)) });
-    replaceFeature(u, { rebuild: true });
+    const u = await atualizarLugar(f, { size: Number(novo.toFixed(2)) }, { rotulo: (k > 1 ? 'aumentar ' : 'diminuir ') + f.name });
     select(u.id);
     if (avisar) toast(`${u.name} ficou maior. Para criar outro, clique fora dele.`);
 }
@@ -1042,23 +1199,51 @@ async function aumentar(f, k, avisar = false) {
 async function excluirLugar(f) {
     const filhos = f.npcs.length + f.shops.length + f.loose_items.length;
     if (filhos && !confirm(`Excluir "${f.name}" com ${filhos} ${filhos === 1 ? 'NPC, loja ou item' : 'NPCs, lojas e itens'}?`)) return;
-    await api('DELETE', `${API}/features/${f.id}`);
-    features = features.filter((x) => x.id !== f.id);
-    if (selectedId === f.id) { selectedId = null; tab = 'mundo'; }
+    const r = await api('DELETE', `${API}/features/${f.id}`);
+    const copia = r.restaurar, id0 = f.id;
+    tirarLugar(f.id);
+    toast(`${f.name} foi excluído. Ctrl+Z desfaz.`);
+    registrar({
+        rotulo: 'excluir ' + f.name,
+        desfazer: async () => { await recriarLugar(copia, rid(id0)); },
+        refazer: async () => { const g = lugarPorId(id0); if (g) { await api('DELETE', `${API}/features/${g.id}`); tirarLugar(g.id); } },
+    });
+}
+function tirarLugar(id) {
+    features = features.filter((x) => x.id !== id);
+    if (selectedId === id) { selectedId = null; tab = 'mundo'; }
     rebuildAll();
     renderPanel();
-    toast(`${f.name} foi excluído.`);
+}
+async function recriarLugar(copia, idAtual) {
+    const n = await api('POST', `${API}/worlds/${WORLD}/features/restaurar`, { feature: copia });
+    if (idAtual != null) remap.set(idAtual, n.id);
+    features.push(n);
+    rebuildAll();
+    select(n.id);
+    return n;
+}
+// Criar um lugar entra no histórico: desfazer apaga (guardando a cópia), refazer recria
+function registrarCriacao(f) {
+    const id0 = f.id;
+    let copia = null;
+    registrar({
+        rotulo: 'criar ' + f.name,
+        desfazer: async () => { const g = lugarPorId(id0); if (!g) return; copia = (await api('DELETE', `${API}/features/${g.id}`)).restaurar; tirarLugar(g.id); },
+        refazer: async () => { if (copia) await recriarLugar(copia, rid(id0)); },
+    });
 }
 
 async function duplicarLugar(f) {
-    const desl = Math.max(4, f.type === 'river' ? 6 : f.size * 1.6);
+    const desl = Math.max(4, LINHA.has(f.type) ? 6 : f.size * 1.6);
     const cl = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const extra = { skin: f.skin, color: f.color, shape: f.shape, secret: f.secret, size: f.size, description: f.description };
-    if (f.type === 'river') extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
+    if (LINHA.has(f.type)) extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
     const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name + ' (cópia)', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
     features.push(novo);
     rebuildAll();
     select(novo.id);
+    registrarCriacao(novo);
 }
 
 /* ---------- Menu do botão direito ---------- */
@@ -1069,19 +1254,21 @@ menuEl.hidden = true;
 stage.appendChild(menuEl);
 let menuAlvo = null;
 
-function abrirMenu(p, e) {
-    const f = lugarEm(p);
+function abrirMenu(p, e, forcado = null) {
+    const f = forcado || lugarEm(p);
     if (!f) { fecharMenu(); return; }
     if (!EDIT) { select(f.id); return; }
     menuAlvo = f;
-    const T = TYPES[f.type], rio = f.type === 'river';
+    const T = TYPES[f.type], rio = LINHA.has(f.type);
     const itens = [
         ['abrir', 'Abrir e editar'],
         ['renomear', 'Renomear…'],
         ['maior', rio ? 'Mais largo' : 'Aumentar'],
         ['menor', rio ? 'Mais estreito' : 'Diminuir'],
         ['mover', 'Mover'],
-        ...(rio ? [['curso', 'Redesenhar o curso']] : []),
+        ...(rio ? [['curso', 'Redesenhar o traçado']] : []),
+        ['modelos', 'Trocar modelo ▸'],
+        ...trocasDe(f.type).filter((t) => t !== f.type).map((t) => ['tipo:' + t, 'Transformar em ' + TYPES[t].label.toLowerCase()]),
         ['duplicar', 'Duplicar ao lado'],
         ['segredo', f.secret ? 'Mostrar aos jogadores' : 'Tornar secreto'],
         ['-'],
@@ -1103,13 +1290,25 @@ menuEl.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-m]');
     if (!b || !menuAlvo) return;
     const f = features.find((x) => x.id === menuAlvo.id);
+    if (!f) { fecharMenu(); return; }
+    const m = b.dataset.m;
+    if (m === 'modelos') {
+        // segunda tela do menu: os modelos do tipo, com a cor de cada um
+        menuEl.innerHTML = `<p class="ctx-titulo"><span>Modelo</span>${esc(f.name)}</p>`
+            + Object.entries(SKINS[f.type]).map(([k, l]) => `<button type="button" role="menuitem" data-m="skin:${k}" class="${skinOf(f) === k ? 'atual' : ''}"><i class="bolinha" style="background:${corDaSkin(f, k)}"></i>${esc(l)}</button>`).join('')
+            + '<hr><button type="button" role="menuitem" data-m="voltar">← Voltar</button>';
+        menuEl.querySelector('button').focus();
+        return;
+    }
+    if (m === 'voltar') { const r = menuEl.getBoundingClientRect(), s = stage.getBoundingClientRect(); abrirMenu({ x: f.x, z: f.z }, { clientX: r.left, clientY: r.top }, f); return; }
     fecharMenu();
-    if (!f) return;
-    switch (b.dataset.m) {
+    if (m.startsWith('skin:')) { await atualizarLugar(f, { skin: m.slice(5) }, { rotulo: 'modelo de ' + f.name }); return; }
+    if (m.startsWith('tipo:')) { await atualizarLugar(f, { type: m.slice(5) }, { rotulo: 'tipo de ' + f.name }); toast(`${f.name} agora é ${TYPES[m.slice(5)].label.toLowerCase()}.`); return; }
+    switch (m) {
         case 'abrir': tab = 'lugar'; select(f.id); break;
         case 'renomear': {
             const nome = prompt('Novo nome:', f.name);
-            if (nome && nome.trim() && nome.trim() !== f.name) replaceFeature(await api('PUT', `${API}/features/${f.id}`, { name: nome.trim().slice(0, 80) }));
+            if (nome && nome.trim() && nome.trim() !== f.name) await atualizarLugar(f, { name: nome.trim().slice(0, 80) }, { rebuild: false, rotulo: 'renomear ' + f.name });
             break;
         }
         case 'maior': await aumentar(f, 1.25); break;
@@ -1117,7 +1316,7 @@ menuEl.addEventListener('click', async (e) => {
         case 'mover': select(f.id); setTool('move'); break;
         case 'curso': select(f.id); setTool('redraw'); break;
         case 'duplicar': await duplicarLugar(f); break;
-        case 'segredo': replaceFeature(await api('PUT', `${API}/features/${f.id}`, { secret: !f.secret })); break;
+        case 'segredo': await atualizarLugar(f, { secret: !f.secret }, { rebuild: false, rotulo: 'segredo de ' + f.name }); break;
         case 'excluir': await excluirLugar(f); break;
     }
 });
@@ -1137,19 +1336,20 @@ async function createFeature(type, x, z, extra = {}) {
     features.push(f);
     rebuildAll();
     select(f.id);
+    registrarCriacao(f);
 }
 async function finishRiver() {
-    if (tool !== 'river' && tool !== 'redraw') return;
-    if (riverDraft.length < 2) { toast('Marque pelo menos dois pontos para traçar o rio.'); return; }
+    if (!DESENHO.has(tool)) return;
+    if (riverDraft.length < 2) { toast('Marque pelo menos dois pontos no mapa.'); return; }
     const pts = riverDraft;
     cancelDraft();
     if (tool === 'redraw') {
         const f = sel();
         setTool('select');
-        if (f) replaceFeature(await api('PUT', `${API}/features/${f.id}`, { points: pts, x: pts[0][0], z: pts[0][1] }), { rebuild: true });
+        if (f) await atualizarLugar(f, { points: pts, x: pts[0][0], z: pts[0][1] }, { rotulo: 'traçado de ' + f.name });
         return;
     }
-    await createFeature('river', pts[0][0], pts[0][1], { points: pts });
+    await createFeature(tool, pts[0][0], pts[0][1], { points: pts });
 }
 async function moveSelected(p) {
     const f = sel();
@@ -1157,19 +1357,127 @@ async function moveSelected(p) {
     if (!f) return;
     const clamp = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const body = { x: p.x, z: p.z };
-    if (f.type === 'river') {
+    if (LINHA.has(f.type)) {
         const dx = p.x - f.x, dz = p.z - f.z;
         body.points = f.points.map(([x, z]) => [clamp(x + dx), clamp(z + dz)]);
         body.x = body.points[0][0]; body.z = body.points[0][1];
     }
-    replaceFeature(await api('PUT', `${API}/features/${f.id}`, body), { rebuild: true });
+    await atualizarLugar(f, body, { rotulo: 'mover ' + f.name });
 }
 finishBtn.addEventListener('click', finishRiver);
 document.addEventListener('keydown', (e) => {
-    if (e.target.matches('input, textarea, select')) return;
-    if (e.key === 'Escape') setTool('select');
+    if (e.target.matches('input, textarea, select') || e.target.isContentEditable) return;
+    const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+    if (EDIT && mod && k === 'z' && !e.shiftKey) { e.preventDefault(); desfazer(); return; }
+    if (EDIT && mod && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); refazer(); return; }
+    if (EDIT && (e.key === 'Delete' || e.key === 'Backspace') && sel() && !arrasto) { e.preventDefault(); excluirLugar(sel()); return; }
+    if (e.key === 'Escape') { fecharMenu(); setTool('select'); }
     if (e.key === 'Enter') finishRiver();
 });
+
+/* ---------- Histórico: Ctrl+Z desfaz, Ctrl+Y (ou Ctrl+Shift+Z) refaz ---------- */
+const historico = [], refeitos = [];
+const remap = new Map(); // id de um lugar apagado -> id dele recriado pelo Desfazer
+const rid = (id) => { let i = id, n = 0; while (remap.has(i) && n++ < 100) i = remap.get(i); return i; };
+const lugarPorId = (id) => features.find((x) => x.id === rid(id)) || null;
+const clonar = (o) => JSON.parse(JSON.stringify(o ?? null));
+let noHistorico = false;
+function registrar(acao) {
+    if (noHistorico) return;
+    historico.push(acao);
+    if (historico.length > 100) historico.shift();
+    refeitos.length = 0;
+    botoesHistorico();
+}
+function registrarMudanca(id, antes, depois, rotulo) {
+    antes = clonar(antes); depois = clonar(depois);
+    const aplicar = async (corpo) => { const g = lugarPorId(id); if (g) replaceFeature(await api('PUT', `${API}/features/${g.id}`, corpo), { rebuild: true }); };
+    registrar({ rotulo, desfazer: () => aplicar(antes), refazer: () => aplicar(depois) });
+}
+// PUT de um lugar guardando como era antes (entra no Ctrl+Z)
+async function atualizarLugar(f, corpo, { rebuild = true, render = true, rotulo } = {}) {
+    const antes = {};
+    for (const k of Object.keys(corpo)) antes[k] = clonar(f[k] ?? null);
+    const u = await api('PUT', `${API}/features/${f.id}`, corpo);
+    replaceFeature(u, { rebuild, render });
+    registrarMudanca(f.id, antes, corpo, rotulo || 'mudança em ' + u.name);
+    return u;
+}
+async function desfazer() {
+    const a = historico.pop();
+    if (!a) { toast('Nada para desfazer.'); return; }
+    noHistorico = true;
+    try { await a.desfazer(); refeitos.push(a); toast('Desfeito: ' + a.rotulo); }
+    catch { historico.push(a); }
+    finally { noHistorico = false; botoesHistorico(); }
+}
+async function refazer() {
+    const a = refeitos.pop();
+    if (!a) { toast('Nada para refazer.'); return; }
+    noHistorico = true;
+    try { await a.refazer(); historico.push(a); toast('Refeito: ' + a.rotulo); }
+    catch { refeitos.push(a); }
+    finally { noHistorico = false; botoesHistorico(); }
+}
+function botoesHistorico() {
+    const d = $('#btn-desfazer'), r = $('#btn-refazer');
+    if (d) { d.disabled = !historico.length; d.title = historico.length ? 'Desfazer: ' + historico[historico.length - 1].rotulo + ' (Ctrl+Z)' : 'Nada para desfazer'; }
+    if (r) { r.disabled = !refeitos.length; r.title = refeitos.length ? 'Refazer: ' + refeitos[refeitos.length - 1].rotulo + ' (Ctrl+Y)' : 'Nada para refazer'; }
+}
+$('#btn-desfazer')?.addEventListener('click', desfazer);
+$('#btn-refazer')?.addEventListener('click', refazer);
+
+/* ---------- Névoa de guerra ---------- */
+let fogModo = 'revelar', fogRaio = 12, previaJogador = false;
+const fogCanvas = document.createElement('canvas');
+fogCanvas.width = fogCanvas.height = 512;
+const fogTex = new THREE.CanvasTexture(fogCanvas);
+fogTex.flipY = false;
+uniforms.uFog.value = fogTex;
+const nevoaAtiva = () => !!world?.fog?.ativo;
+// Ponto visível para quem joga (mesma regra do servidor: a última pincelada que cobre o ponto vence)
+function pontoVisivel(x, z) {
+    if (!nevoaAtiva()) return true;
+    let vis = false;
+    for (const [ax, az, r, v] of world.fog.areas) if ((x - ax) ** 2 + (z - az) ** 2 <= r * r) vis = !!v;
+    return vis;
+}
+// O que esconder agora: para jogadores sempre; para quem edita só na prévia
+const visivelAgora = (x, z) => (EDIT && !previaJogador) ? true : pontoVisivel(x, z);
+function desenharNevoa() {
+    const ctx = fogCanvas.getContext('2d'), S = 512;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, S, S);
+    for (const [x, z, r, v] of world?.fog?.areas || []) {
+        const cx = ((x + HALF) / SIZE) * S, cy = ((z + HALF) / SIZE) * S, rr = Math.max(1, (r / SIZE) * S);
+        const g = ctx.createRadialGradient(cx, cy, rr * 0.7, cx, cy, rr);
+        const cor = v ? '255,255,255' : '0,0,0';
+        g.addColorStop(0, `rgba(${cor},1)`); g.addColorStop(1, `rgba(${cor},0)`);
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.fill();
+    }
+    fogTex.needsUpdate = true;
+    uniforms.uFogOn.value = nevoaAtiva() ? 1 : 0;
+    uniforms.uFogAlpha.value = EDIT && !previaJogador ? 0.5 : 1;
+}
+function pincelar(p) {
+    const u = pintando.ultimo;
+    if (u && Math.hypot(p.x - u.x, p.z - u.z) < fogRaio * 0.35) return;
+    pintando.ultimo = p;
+    if (!world.fog.ativo) world.fog.ativo = true;
+    world.fog.areas.push([Math.round(p.x * 100) / 100, Math.round(p.z * 100) / 100, fogRaio, pintando.v]);
+    if (world.fog.areas.length > 1400) world.fog.areas.splice(0, world.fog.areas.length - 1400);
+    desenharNevoa();
+}
+async function salvarNevoa(antes, rotulo) {
+    const depois = clonar(world.fog);
+    const enviar = async (fog) => {
+        world.fog = (await api('PUT', `${API}/worlds/${WORLD}/fog`, fog)).fog;
+        desenharNevoa();
+        if (previaJogador) rebuildAll();
+        if (tab === 'nevoa') renderPanel();
+    };
+    try { await enviar(depois); registrar({ rotulo: rotulo || 'névoa', desfazer: () => enviar(antes), refazer: () => enviar(depois) }); }
+    catch { world.fog = antes; desenharNevoa(); }
+}
 
 function rebuildAll() {
     prepare();
@@ -1203,25 +1511,54 @@ function focusFeature(f) {
 /* ---------- Painel lateral ---------- */
 const panel = $('#panel');
 
+const ehDono = () => world?.papel === 'dono';
 function tabsHtml() {
     const abas = [];
     if (sel()) abas.push(['lugar', 'Lugar']);
     abas.push(['mundo', 'Mundo']);
-    if (EDIT) abas.push(['aparencia', 'Aparência'], ['compartilhar', 'Compartilhar']);
+    if (EDIT) abas.push(['aparencia', 'Aparência'], ['nevoa', 'Névoa']);
+    if (EDIT && ehDono()) abas.push(['compartilhar', 'Compartilhar']);
     return `<nav class="tabs" role="tablist">${abas.map(([k, l]) =>
         `<button type="button" role="tab" data-tab="${k}" aria-selected="${tab === k}" class="${tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>`;
 }
 
 function renderPanel() {
     if (tab === 'lugar' && !sel()) tab = 'mundo';
-    if (!EDIT && (tab === 'aparencia' || tab === 'compartilhar')) tab = 'mundo';
+    if (!EDIT && ['aparencia', 'compartilhar', 'nevoa'].includes(tab)) tab = 'mundo';
+    if (tab === 'compartilhar' && !ehDono()) tab = 'mundo';
     const scroll = panel.scrollTop;
     const corpo = tab === 'lugar' ? (EDIT ? lugarEditor(sel()) : lugarLeitura(sel()))
         : tab === 'aparencia' ? aparenciaHtml()
         : tab === 'compartilhar' ? compartilharHtml()
+        : tab === 'nevoa' ? nevoaHtml()
         : mundoHtml();
     panel.innerHTML = tabsHtml() + `<div class="tab-body">${corpo}</div>`;
     panel.scrollTop = scroll;
+}
+
+function nevoaHtml() {
+    const fog = world.fog, n = fog.areas.length;
+    return `<h3>Névoa de guerra</h3>
+        <label class="wb-check"><input type="checkbox" data-fog-ativo ${fog.ativo ? 'checked' : ''}> Usar névoa: jogadores só veem o que você revelar</label>
+        <p class="mut nota">Com a névoa ligada, jogadores convidados (e o público, se o mapa for público) não recebem os lugares que estão cobertos. Você e os mestres convidados veem tudo, com a névoa meio transparente por cima.</p>
+        <h3>Pincel</h3>
+        <div class="chips" role="radiogroup">
+            <label class="chip ${fogModo === 'revelar' ? 'on' : ''}"><input type="radio" name="fogmodo" value="revelar" data-fog-modo ${fogModo === 'revelar' ? 'checked' : ''}>Revelar</label>
+            <label class="chip ${fogModo === 'cobrir' ? 'on' : ''}"><input type="radio" name="fogmodo" value="cobrir" data-fog-modo ${fogModo === 'cobrir' ? 'checked' : ''}>Cobrir de novo</label>
+        </div>
+        <label>Tamanho do pincel
+            <span class="range"><input type="range" data-fog-raio min="2" max="${Math.round(HALF * 0.5)}" step="1" value="${fogRaio}"><output>${fogRaio}</output></span>
+        </label>
+        <div class="linha">
+            <button type="button" class="${tool === 'fog' ? '' : 'primary'}" data-act="fog-pintar">${tool === 'fog' ? 'Parar de pintar' : 'Pintar no mapa'}</button>
+            ${sel() ? '<button type="button" data-act="fog-lugar">Revelar o lugar selecionado</button>' : ''}
+        </div>
+        <div class="linha">
+            <button type="button" data-act="fog-tudo">Revelar tudo</button>
+            <button type="button" data-act="fog-nada">Cobrir tudo</button>
+        </div>
+        <label class="wb-check"><input type="checkbox" data-fog-previa ${previaJogador ? 'checked' : ''}> Prévia: ver como os jogadores veem</label>
+        <p class="mut nota">${n} ${n === 1 ? 'pincelada' : 'pinceladas'}. Ctrl+Z desfaz a última.</p>`;
 }
 
 function listaLugares() {
@@ -1252,37 +1589,60 @@ function mundoHtml() {
         <div class="acoes-mundo">
             <button type="button" class="primary" data-act="salvar">Salvar agora</button>
             <button type="button" data-act="imagem">Mapa ilustrado</button>
-            <a class="btn" href="${URLS.exportar}">Exportar arquivo</a>
-            <form method="POST" action="${URLS.copiar}"><input type="hidden" name="_token" value="${CSRF}"><button type="submit">Duplicar</button></form>
+            ${ehDono() ? `<a class="btn" href="${URLS.exportar}">Exportar arquivo</a>
+            <form method="POST" action="${URLS.copiar}"><input type="hidden" name="_token" value="${CSRF}"><button type="submit">Duplicar</button></form>` : ''}
             <a class="btn" href="${URLS.ver}" target="_blank" rel="noopener">Ver como jogador</a>
         </div>
         <p class="mut nota">Tudo o que você muda no mapa é salvo na hora. "Salvar agora" também atualiza a capa do mundo; o arquivo exportado pode ser importado de volta em Meus mundos.</p>
-        <div class="help"><p>Escolha uma ferramenta à esquerda e clique no mapa para criar montanhas, lagos, rios, florestas, cidades e vilas. Com Selecionar, clique num lugar para mudar nome, história, modelo e cor.</p></div>
+        ${world.papel === 'mestre' ? '<p class="aviso-claro">Você é mestre convidado neste mundo: pode editar o mapa e a névoa. Tamanho, visibilidade e jogadores ficam com o dono.</p>' : ''}
+        <div class="help"><p>Escolha uma ferramenta à esquerda e clique no mapa. Com Selecionar, clique num lugar para editar e arraste o lugar selecionado para movê-lo. Botão direito abre o menu rápido. <strong>Ctrl+Z</strong> desfaz, <strong>Ctrl+Y</strong> refaz e <strong>Delete</strong> apaga o lugar selecionado.</p></div>
         ${listaLugares()}`;
 }
 
+let dimPersonalizada = false;
 function tamanhoMapaHtml() {
     const pl = world.plano;
     if (!pl) return '';
+    const preset = Object.prototype.hasOwnProperty.call(pl.dimensoes, String(world.dimension));
+    const livre = dimPersonalizada || !preset;
     const opts = Object.entries(pl.dimensoes).map(([d, nome]) => {
         const bloq = Number(d) > pl.dimensao_max;
-        return `<option value="${d}" ${Number(d) === world.dimension ? 'selected' : ''}>${esc(nome)} (${d} × ${d})${bloq ? ' · plano Cartógrafo' : ''}</option>`;
+        return `<option value="${d}" ${!livre && Number(d) === world.dimension ? 'selected' : ''}>${esc(nome)} (${d} × ${d})${bloq ? ' · plano Cartógrafo' : ''}</option>`;
     }).join('');
-    return `<label>Tamanho do mapa <select data-dimensao>${opts}</select></label>
+    return `<label>Tamanho do mapa <select data-dimensao>${opts}<option value="livre" ${livre ? 'selected' : ''}>Personalizado…</option></select></label>
+        ${livre ? `<div class="dim-livre"><input type="number" data-dim-num min="${pl.dimensao_min}" max="1000" step="2" value="${world.dimension}" aria-label="Lado do mapa"><span>× mesmo valor</span><button type="button" data-act="dim-aplicar">Aplicar</button></div>
+            <p class="mut nota">De ${pl.dimensao_min} a ${pl.dimensao_max} de lado no seu plano${pl.pago ? '' : ' (o plano Cartógrafo vai até 1000)'}.</p>` : ''}
         ${pl.pago ? '' : `<p class="mut nota">No plano grátis o mapa vai até ${pl.dimensao_max} × ${pl.dimensao_max}. <button type="button" class="link" data-act="planos">Ver planos</button></p>`}`;
+}
+async function mudarDimensao(d) {
+    try {
+        world = (await api('PUT', `${API}/worlds/${WORLD}`, { dimension: d })).world;
+        dimPersonalizada = false;
+        setDimensao(world.dimension);
+        camera.position.set(0, 120 * K, 150 * K);
+        controls.target.set(0, 0, 0);
+        applyTheme();
+        desenharNevoa();
+        rebuildAll();
+        toast('Mapa agora tem ' + world.dimension + ' × ' + world.dimension + '.');
+    } catch { /* aviso já mostrado */ }
+    renderPanel();
 }
 
 function formaHtml(f) {
     const s = f.shape || {}, F = forma(f);
     const faixa = (k, rot, min, max, step, val, fmt = (v) => v) => `<label>${rot}
         <span class="range"><input type="range" data-shape="${k}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${fmt(val)}</output></span></label>`;
-    if (f.type === 'river') {
+    if (LINHA.has(f.type)) {
         return `<h3>Formato</h3>
-            ${faixa('curvas', 'Curvas (meandros)', 0, 1, 0.05, s.curvas ?? 0)}
-            <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o curso</button>
+            ${faixa('curvas', f.type === 'road' ? 'Curvas' : 'Curvas (meandros)', 0, 1, 0.05, s.curvas ?? 0)}
+            <div class="linha"><button type="button" data-act="redesenhar">Redesenhar o traçado</button>
             ${f.shape ? '<button type="button" class="link" data-act="forma-padrao">Voltar ao formato padrão</button>' : ''}</div>`;
     }
+    const extra = (['mountain', 'island'].includes(f.type) ? faixa('altura', 'Altura', 0.2, 3, 0.05, s.altura ?? 1) : '')
+        + (['forest', 'city', 'village'].includes(f.type) ? faixa('densidade', f.type === 'forest' ? 'Densidade das árvores' : 'Quantidade de casas', 0.2, 3, 0.05, s.densidade ?? 1) : '');
     return `<h3>Formato</h3>
+        ${extra}
         ${faixa('esticar', 'Proporção (largo ↔ comprido)', 0.3, 3, 0.05, s.esticar ?? 1)}
         ${faixa('giro', 'Direção (graus)', 0, 360, 5, s.giro ?? 0)}
         ${faixa('irregular', 'Contorno irregular', 0, 1, 0.05, Math.round(F.irr * 100) / 100)}
@@ -1311,7 +1671,9 @@ function aparenciaHtml() {
 
 function compartilharHtml() {
     const players = (world.players || []).map((p) => `<li><div><span>${esc(p.name)}</span><div class="mut">${esc(p.email)}</div></div>
-        <button type="button" class="x" data-act="del-player" data-id="${p.id}" title="Remover ${esc(p.name)}">×</button></li>`).join('');
+        <span class="papel-jog"><select data-papel="${p.id}" aria-label="Papel de ${esc(p.name)}">
+            <option value="jogador" ${p.papel !== 'mestre' ? 'selected' : ''}>Jogador</option><option value="mestre" ${p.papel === 'mestre' ? 'selected' : ''}>Mestre</option></select>
+        <button type="button" class="x" data-act="del-player" data-id="${p.id}" title="Remover ${esc(p.name)}">×</button></span></li>`).join('');
     const link = new URL(URLS.ver, location.href).href;
     return `<h3>Quem pode ver</h3>
         <div class="chips vis" role="radiogroup">
@@ -1325,12 +1687,13 @@ function compartilharHtml() {
             <span class="copiar"><input readonly value="${esc(link)}" id="link-ver"><button type="button" data-act="copiar-link">Copiar</button></span>
         </label>
 
-        <h3>Jogadores <small>${(world.players || []).length}</small></h3>
-        <p class="mut nota">Jogadores veem o mapa e as histórias, mas não editam. Lugares marcados como secretos ficam escondidos deles.</p>
+        <h3>Pessoas convidadas <small>${(world.players || []).length}</small></h3>
+        <p class="mut nota"><strong>Jogador</strong> vê o mapa e as histórias, sem os lugares secretos e sem o que estiver sob a névoa. <strong>Mestre</strong> vê tudo e edita o mapa junto com você.</p>
         <ul class="list">${players}</ul>
         <form class="mini" data-form="player">
-            <input name="email" type="email" placeholder="E-mail da conta do jogador" required maxlength="255" aria-label="E-mail do jogador">
-            <button>Convidar jogador</button>
+            <input name="email" type="email" placeholder="E-mail da conta da pessoa" required maxlength="255" aria-label="E-mail">
+            <select name="papel" aria-label="Papel"><option value="jogador">Como jogador</option><option value="mestre">Como mestre</option></select>
+            <button>Convidar</button>
         </form>`;
 }
 
@@ -1362,31 +1725,48 @@ function lugarEditor(f) {
         <ul class="list">${s.items.map(itemLi).join('')}</ul>
         ${itemForm(s.id)}</li>`).join('');
 
+    const trocas = trocasDe(f.type);
+    const cards = [['', 'Padrão do mundo', corDaSkin(f, theme.skins[f.type])], ...Object.entries(SKINS[f.type]).map(([k, l]) => [k, l, corDaSkin(f, k)])]
+        .map(([k, l, cor]) => `<button type="button" class="skin-card ${(f.skin || '') === k ? 'on' : ''}" data-act="skin" data-k="${k}" title="${esc(l)}"><i style="background:${cor}"></i><span>${esc(l)}${k === '' ? `<small>${esc(padrao)}</small>` : ''}</span></button>`).join('');
+    const paleta = (PALETAS[f.type] || []).map((h) => `<button type="button" class="amostra-cor ${f.color === h ? 'on' : ''}" data-act="cor" data-k="${h}" style="background:${h}" title="${h}" aria-label="Cor ${h}"></button>`).join('');
     return `
         <div class="head">
-            <p class="kind">${T.label}</p>
+            <div class="lugar-topo">
+                <p class="kind">${T.label}</p>
+                ${trocas.length > 1 ? `<div class="chips tipo-troca">${trocas.map((t) => `<button type="button" class="chip-btn ${t === f.type ? 'on' : ''}" data-act="tipo" data-k="${t}">${TYPES[t].label}</button>`).join('')}</div>` : ''}
+            </div>
             <label>Nome <input data-field="name" value="${esc(f.name)}" maxlength="80"></label>
             <label>Descrição <textarea data-field="description" rows="3" placeholder="Lendas, clima, história do lugar">${esc(f.description)}</textarea></label>
-            <label>${T.sizeLabel}
-                <span class="range"><input type="range" data-field="size" min="${min}" max="${max}" step="${step}" value="${f.size}"><output>${f.size}</output></span>
-            </label>
-            <label>Modelo
-                <select data-field="skin">
-                    <option value="" ${f.skin ? '' : 'selected'}>Padrão do mundo (${esc(padrao)})</option>
-                    ${Object.entries(SKINS[f.type]).map(([k, l]) => `<option value="${k}" ${f.skin === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}
-                </select>
-            </label>
-            <div class="cor-linha">
-                <label class="cor">${T.corLabel}<input type="color" data-field="color" value="${corOf(f)}"></label>
-                ${f.color ? '<button type="button" class="link" data-act="cor-padrao">Voltar à cor padrão</button>' : '<span class="mut">cor padrão</span>'}
-            </div>
-            ${formaHtml(f)}
-            <label class="wb-check"><input type="checkbox" data-field="secret" ${f.secret ? 'checked' : ''}> Secreto: escondido dos jogadores e do público</label>
-            <div class="linha">
-                <button type="button" data-act="mover">Mover</button>
-                <button type="button" class="danger" data-act="del-feature">Excluir ${T.label.toLowerCase()}</button>
-            </div>
         </div>
+
+        <details class="secao-lugar" open>
+            <summary>Modelo</summary>
+            <div class="skin-cards">${cards}</div>
+        </details>
+
+        <details class="secao-lugar" open>
+            <summary>Tamanho e cor</summary>
+            <label>${T.sizeLabel}
+                <span class="range com-botoes"><button type="button" class="passo" data-act="tam-menos" aria-label="Diminuir">−</button><input type="range" data-field="size" min="${min}" max="${max}" step="${step}" value="${f.size}"><button type="button" class="passo" data-act="tam-mais" aria-label="Aumentar">+</button><output>${f.size}</output></span>
+            </label>
+            <p class="rotulo-campo">${T.corLabel}</p>
+            <div class="paleta">${paleta}<label class="amostra-cor livre" title="Outra cor"><input type="color" data-field="color" value="${corOf(f)}" aria-label="Escolher outra cor"></label></div>
+            ${f.color ? '<p><button type="button" class="link" data-act="cor-padrao">Voltar à cor padrão</button></p>' : '<p class="mut nota">Usando a cor padrão do modelo.</p>'}
+        </details>
+
+        <details class="secao-lugar" open>
+            <summary>Formato</summary>
+            ${formaHtml(f).replace('<h3>Formato</h3>', '')}
+            <label class="wb-check"><input type="checkbox" data-shape="semNome" ${f.shape?.semNome ? 'checked' : ''}> Esconder o nome no mapa</label>
+            <label class="wb-check"><input type="checkbox" data-field="secret" ${f.secret ? 'checked' : ''}> Secreto: escondido dos jogadores e do público</label>
+        </details>
+
+        <div class="linha">
+            <button type="button" data-act="mover">Mover</button>
+            <button type="button" data-act="duplicar">Duplicar</button>
+            <button type="button" class="danger" data-act="del-feature">Excluir ${T.label.toLowerCase()}</button>
+        </div>
+        <p class="mut nota">Dica: arraste o lugar selecionado no mapa para movê-lo; Delete apaga e Ctrl+Z desfaz.</p>
 
         <h3>NPCs <small>${f.npcs.length}</small></h3>
         <ul class="list">${npcs}</ul>
@@ -1435,7 +1815,7 @@ function lugarLeitura(f) {
 // --- Eventos do painel ---
 panel.addEventListener('input', (e) => {
     const t = e.target;
-    if (t.type === 'range') t.nextElementSibling.textContent = t.value;
+    if (t.type === 'range') { const o = t.parentElement.querySelector('output'); if (o) o.textContent = t.value; }
     if (t.dataset.cor) {            // prévia ao vivo da cor do tema
         theme.cores[t.dataset.cor] = t.value;
         applyTheme();
@@ -1456,12 +1836,18 @@ function salvarTema() {
         try { world = (await api('PUT', `${API}/worlds/${WORLD}`, { theme })).world; } catch { /* aviso já mostrado */ }
     }, 600);
 }
-function mudarTema(fn) {
+let temaSalvo = null; // como o tema estava na última mudança registrada (para o Ctrl+Z)
+function mudarTema(fn, rotulo = 'aparência') {
+    const antes = clonar(temaSalvo || theme);
     fn(theme);
+    const depois = clonar(theme);
+    temaSalvo = clonar(theme);
     applyTheme();
     rebuildAll();
     renderPanel();
     salvarTema();
+    const aplicar = (t) => { theme = clonar(t); temaSalvo = clonar(t); applyTheme(); rebuildAll(); renderPanel(); salvarTema(); };
+    registrar({ rotulo, desfazer: async () => aplicar(antes), refazer: async () => aplicar(depois) });
 }
 
 panel.addEventListener('change', async (e) => {
@@ -1477,24 +1863,29 @@ panel.addEventListener('change', async (e) => {
     if (t.dataset.shape) {
         const f = sel();
         if (!f) return;
-        const shape = { ...(f.shape || {}), [t.dataset.shape]: Number(t.value) };
-        try { replaceFeature(await api('PUT', `${API}/features/${f.id}`, { shape }), { rebuild: true }); } catch { renderPanel(); }
+        const v = t.type === 'checkbox' ? (t.checked ? 1 : 0) : Number(t.value);
+        const shape = { ...(f.shape || {}), [t.dataset.shape]: v };
+        try { await atualizarLugar(f, { shape }, { rotulo: 'formato de ' + f.name }); } catch { renderPanel(); }
         return;
     }
     if (t.dataset.dimensao !== undefined) {
-        const d = Number(t.value);
-        try {
-            world = (await api('PUT', `${API}/worlds/${WORLD}`, { dimension: d })).world;
-            setDimensao(world.dimension);
-            camera.position.set(0, 120 * K, 150 * K);
-            controls.target.set(0, 0, 0);
-            applyTheme();
-            rebuildAll();
-            toast('Mapa agora tem ' + world.dimension + ' × ' + world.dimension + '.');
-        } catch { /* aviso já mostrado */ }
+        if (t.value === 'livre') { dimPersonalizada = true; renderPanel(); return; }
+        return mudarDimensao(Number(t.value));
+    }
+    if (t.dataset.papel) {
+        try { world = (await api('PUT', `${API}/worlds/${WORLD}/players/${t.dataset.papel}`, { papel: t.value })).world; toast('Papel atualizado.'); } catch { /* */ }
         renderPanel();
         return;
     }
+    if (t.hasAttribute('data-fog-ativo')) {
+        const antes = clonar(world.fog);
+        world.fog.ativo = t.checked;
+        desenharNevoa();
+        return salvarNevoa(antes, t.checked ? 'ligar névoa' : 'desligar névoa');
+    }
+    if (t.hasAttribute('data-fog-modo')) { fogModo = t.value; renderPanel(); return; }
+    if (t.hasAttribute('data-fog-raio')) { fogRaio = Number(t.value); return; }
+    if (t.hasAttribute('data-fog-previa')) { previaJogador = t.checked; desenharNevoa(); rebuildAll(); return; }
     if (t.dataset.world) {
         try {
             world = (await api('PUT', `${API}/worlds/${WORLD}`, { [t.dataset.world]: t.value })).world;
@@ -1509,9 +1900,8 @@ panel.addEventListener('change', async (e) => {
     if (field === 'secret') valor = t.checked;
     if (field === 'skin') valor = t.value || null;
     try {
-        const u = await api('PUT', `${API}/features/${f.id}`, { [field]: valor });
         const visual = ['size', 'skin', 'color'].includes(field);
-        replaceFeature(u, { rebuild: visual, render: field !== 'name' && field !== 'description' });
+        await atualizarLugar(f, { [field]: valor }, { rebuild: visual, render: field !== 'name' && field !== 'description', rotulo: ({ name: 'nome', description: 'descrição', size: 'tamanho', color: 'cor', secret: 'segredo', skin: 'modelo' }[field] || field) + ' de ' + f.name });
     } catch { renderPanel(); }
 });
 
@@ -1546,7 +1936,7 @@ panel.addEventListener('click', async (e) => {
         }
         case 'tema': {
             const p = TEMAS[btn.dataset.k];
-            return mudarTema((th) => { th.fundo = p.fundo; th.estilo = p.estilo; th.cores = { ...p.cores }; });
+            return mudarTema((th) => { th.fundo = p.fundo; th.estilo = p.estilo; th.cores = { ...th.cores, ...p.cores }; }, 'tema ' + p.label);
         }
         case 'salvar': return salvarAgora();
         case 'imagem': return abrirAtlas();
@@ -1567,8 +1957,39 @@ panel.addEventListener('click', async (e) => {
             setTool('redraw');
             return;
         case 'forma-padrao':
-            replaceFeature(await api('PUT', `${API}/features/${f.id}`, { shape: null }), { rebuild: true });
+            await atualizarLugar(f, { shape: null }, { rotulo: 'formato de ' + f.name });
             return;
+        case 'skin':
+            await atualizarLugar(f, { skin: btn.dataset.k || null }, { rotulo: 'modelo de ' + f.name });
+            return;
+        case 'cor':
+            await atualizarLugar(f, { color: btn.dataset.k }, { rotulo: 'cor de ' + f.name });
+            return;
+        case 'tipo':
+            if (btn.dataset.k !== f.type) await atualizarLugar(f, { type: btn.dataset.k }, { rotulo: 'tipo de ' + f.name });
+            return;
+        case 'tam-mais': return aumentar(f, 1.15);
+        case 'tam-menos': return aumentar(f, 1 / 1.15);
+        case 'duplicar': return duplicarLugar(f);
+        case 'dim-aplicar': {
+            const v = Number(panel.querySelector('[data-dim-num]')?.value);
+            if (!v) return;
+            return mudarDimensao(v);
+        }
+        case 'fog-pintar': setTool(tool === 'fog' ? 'select' : 'fog'); renderPanel(); return;
+        case 'fog-tudo': case 'fog-nada': case 'fog-lugar': {
+            const antes = clonar(world.fog);
+            if (act === 'fog-tudo') world.fog = { ativo: true, areas: [[0, 0, SIZE, 1]] };
+            else if (act === 'fog-nada') world.fog = { ativo: true, areas: [] };
+            else if (f) {
+                const r = LINHA.has(f.type) ? null : f.size * Math.max(forma(f).sx, forma(f).sz) * 1.25 + 2;
+                world.fog.ativo = true;
+                if (r) world.fog.areas.push([f.x, f.z, Math.min(600, r), 1]);
+                else (f.points || []).forEach(([x, z]) => world.fog.areas.push([x, z, f.size * 3 + 3, 1]));
+            }
+            desenharNevoa();
+            return salvarNevoa(antes, { 'fog-tudo': 'revelar tudo', 'fog-nada': 'cobrir tudo', 'fog-lugar': 'revelar ' + (f?.name || 'lugar') }[act]);
+        }
         case 'planos':
             location.href = world.plano?.url || '/';
             return;
@@ -1576,14 +1997,7 @@ panel.addEventListener('click', async (e) => {
             replaceFeature(await api('PUT', `${API}/features/${f.id}`, { color: null }), { rebuild: true });
             return;
         case 'del-feature':
-            if (!confirm(`Excluir "${f.name}" com todos os NPCs, lojas e itens daqui?`)) return;
-            await api('DELETE', `${API}/features/${f.id}`);
-            features = features.filter((x) => x.id !== f.id);
-            selectedId = null;
-            tab = 'mundo';
-            rebuildAll();
-            renderPanel();
-            return;
+            return excluirLugar(f);
     }
     const route = { 'del-npc': 'npcs', 'del-shop': 'shops', 'del-item': 'items' }[act];
     if (route) replaceFeature(await api('DELETE', `${API}/${route}/${id}`));
@@ -1635,6 +2049,7 @@ function abrirAtlas() {
     if (!window.WBAtlas) { baixarVista3D(); return; }
     window.WBAtlas.abrir({
         world, theme, features, EDIT, SIZE, HALF, TYPES, SKINS,
+        nevoa: world.fog, soJogador: !EDIT,
         sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf,
         comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
         baixar3D: baixarVista3D,
@@ -1706,6 +2121,11 @@ function animate() {
     features = data.features;
     setDimensao(world.dimension);
     camera.position.set(0, 120 * K, 150 * K);
+    world.fog = world.fog || { ativo: false, areas: [] };
+    temaSalvo = clonar(theme);
+    desenharNevoa();
+    botoesHistorico();
+    if (!EDIT && nevoaAtiva()) setTimeout(() => toast('Parte deste mapa ainda está coberta pela névoa: o mestre revela aos poucos.'), 1200);
     applyTheme();
     rebuildAll();
     renderPanel();
