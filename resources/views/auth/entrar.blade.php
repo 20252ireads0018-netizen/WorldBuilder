@@ -5,9 +5,11 @@
 @section('conteudo')
 <div class="wb-pagina">
 <div class="shelf shelf--estreita">
-    <form method="POST" action="{{ route('login.attempt') }}" class="card">
+    <form method="POST" action="{{ route('login.attempt') }}" class="card conta">
         @csrf
+        @include('partials.bussola', ['classe' => 'selo-bussola'])
         <h2>Entrar</h2>
+        <p class="mut">Volte para os seus mapas.</p>
         <label>E-mail
             <input type="email" name="email" value="{{ old('email') }}" required autofocus autocomplete="email">
         </label>
@@ -16,10 +18,8 @@
         </label>
         <label class="wb-check"><input type="checkbox" name="remember" value="1"> Manter conectado</label>
         @error('email') <p class="error">{{ $message }}</p> @enderror
-        <div class="linha">
-            <button class="primary">Entrar</button>
-            <a href="{{ route('register') }}">Criar uma conta</a>
-        </div>
+        <button class="primary largo">Entrar</button>
+        <p class="conta-rodape">Ainda não tem conta? <a href="{{ route('register') }}">Criar uma conta</a></p>
     </form>
 </div>
 </div>
