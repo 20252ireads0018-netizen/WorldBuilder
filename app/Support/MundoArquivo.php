@@ -19,12 +19,31 @@ final class MundoArquivo
     /** @param bool $comSegredos false = deixa de fora os locais secretos (cópia de mundo alheio). */
     public static function exportar(World $world, bool $comSegredos = true): array
     {
-        $q = $world->features()->with(['npcs', 'shops', 'items'])->orderBy('id');
+        $eras = $world->eras()->get()->map(fn ($e) => [
+            'name' => $e->name, 'periodo' => $e->periodo, 'description' => $e->description,
+            'features' => self::lugaresDaEra($e->features(), $comSegredos),
+        ])->values()->all();
+
+        return [
+            'formato' => self::FORMATO,
+            'versao' => 2,
+            'name' => $world->name,
+            'description' => $world->description,
+            'dimension' => (int) ($world->dimension ?: 200),
+            'theme' => $world->tema(),
+            'features' => $eras[0]['features'] ?? [], // arquivos antigos (sem eras) leem só isto
+            'eras' => $eras,
+        ];
+    }
+
+    private static function lugaresDaEra($relacao, bool $comSegredos): array
+    {
+        $q = $relacao->with(['npcs', 'shops', 'items'])->orderBy('id');
         if (! $comSegredos) {
             $q->where('secret', false);
         }
 
-        $features = $q->get()->map(function (Feature $f) {
+        return $q->get()->map(function (Feature $f) {
             $idx = $f->shops->pluck('id')->flip();
             $loja = fn ($id) => $id !== null && isset($idx[$id]) ? $idx[$id] : null;
 
@@ -50,16 +69,6 @@ final class MundoArquivo
                 ])->values()->all(),
             ];
         })->values()->all();
-
-        return [
-            'formato' => self::FORMATO,
-            'versao' => 1,
-            'name' => $world->name,
-            'description' => $world->description,
-            'dimension' => (int) ($world->dimension ?: 200),
-            'theme' => $world->tema(),
-            'features' => $features,
-        ];
     }
 
     /**
@@ -81,8 +90,13 @@ final class MundoArquivo
             'theme' => 'nullable|array',
             'features' => 'present|array|max:' . Api::MAX_LOCAIS,
             'features.*.type' => 'required|in:' . implode(',', Aparencia::TIPOS),
-            'features.*.name' => 'required|string|max:80',
+            'features.*.name' => 'nullable|string|max:80',
             'features.*.description' => 'nullable|string|max:2000',
+            'eras' => 'nullable|array|max:' . Api::MAX_ERAS,
+            'eras.*.name' => 'required|string|max:80',
+            'eras.*.periodo' => 'nullable|string|max:80',
+            'eras.*.description' => 'nullable|string|max:2000',
+            'eras.*.features' => 'present|array|max:' . Api::MAX_LOCAIS,
         ] + $lugar + [
             'features.*.skin' => 'nullable|string|max:20',
             'features.*.color' => ['nullable', 'regex:' . Aparencia::COR],
@@ -105,6 +119,12 @@ final class MundoArquivo
             'formato.*' => 'Esse arquivo não é um mundo exportado do Worldbuilder.',
         ]);
         $d = $v->validate();
+        // os lugares de cada era passam pelas mesmas regras dos lugares do arquivo
+        foreach ($d['eras'] ?? [] as $i => $era) {
+            $regras = array_intersect_key($v->getRules(), array_flip(array_filter(array_keys($v->getRules()), fn ($k) => str_starts_with($k, 'features.'))));
+            Validator::make(['features' => $dados['eras'][$i]['features'] ?? []], $regras)->validate();
+            $d['eras'][$i]['features'] = $dados['eras'][$i]['features'] ?? [];
+        }
 
         return DB::transaction(function () use ($d, $userId, $nome, $dimensao) {
             $world = new World(['name' => $nome ?? $d['name'], 'description' => $d['description'] ?? null]);
@@ -113,8 +133,18 @@ final class MundoArquivo
             $world->theme = Aparencia::normalizar($d['theme'] ?? null);
             $world->save();
 
-            foreach ($d['features'] as $f) {
-                self::criarLugar($world, $f);
+            if (! empty($d['eras'])) {
+                foreach ($d['eras'] as $i => $e) {
+                    $dadosEra = ['name' => $e['name'], 'periodo' => $e['periodo'] ?? null, 'description' => $e['description'] ?? null, 'ordem' => $i];
+                    $era = $i === 0 ? tap($world->eraPrincipal())->update($dadosEra) : $world->eras()->create($dadosEra);
+                    foreach ($e['features'] as $f) {
+                        self::criarLugar($world, $f, $era->id);
+                    }
+                }
+            } else {
+                foreach ($d['features'] as $f) {
+                    self::criarLugar($world, $f);
+                }
             }
 
             return $world;
@@ -128,7 +158,7 @@ final class MundoArquivo
     }
 
     /** Lugar no formato do arquivo (com NPCs, lojas e itens): usado na importação e no Desfazer de uma exclusão. */
-    public static function criarLugar(World $world, array $f): ?Feature
+    public static function criarLugar(World $world, array $f, ?int $eraId = null): ?Feature
     {
         $linha = in_array($f['type'], Aparencia::COM_PONTOS, true);
         if ($linha && count($f['points'] ?? []) < Aparencia::minPontos($f['type'])) {
@@ -147,6 +177,7 @@ final class MundoArquivo
             'skin' => Aparencia::skinValida($f['type'], $skin) ? $skin : null,
             'color' => isset($f['color']) ? strtolower($f['color']) : null,
             'secret' => (bool) ($f['secret'] ?? false),
+            'era_id' => $eraId,
         ]);
 
         $lojas = [];

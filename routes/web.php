@@ -54,6 +54,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/worlds/{world}/players', [WorldbuilderApiController::class, 'storePlayer'])->whereNumber('world')->middleware('throttle:20,1')->name('players.store');
         Route::put('/worlds/{world}/fog', [WorldbuilderApiController::class, 'updateFog'])->whereNumber('world')->name('worlds.fog');
         Route::put('/worlds/{world}/players/{user}', [WorldbuilderApiController::class, 'updatePlayer'])->whereNumber(['world', 'user'])->name('players.update');
+        Route::post('/worlds/{world}/eras', [WorldbuilderApiController::class, 'storeEra'])->whereNumber('world')->middleware('throttle:30,1')->name('eras.store');
+        Route::put('/eras/{era}', [WorldbuilderApiController::class, 'updateEra'])->whereNumber('era')->name('eras.update');
+        Route::delete('/eras/{era}', [WorldbuilderApiController::class, 'destroyEra'])->whereNumber('era')->name('eras.destroy');
         Route::post('/worlds/{world}/features/restaurar', [WorldbuilderApiController::class, 'restoreFeature'])->whereNumber('world')->name('features.restore');
         Route::delete('/worlds/{world}/players/{user}', [WorldbuilderApiController::class, 'destroyPlayer'])->whereNumber(['world', 'user'])->name('players.destroy');
         Route::post('/worlds/{world}/features', [WorldbuilderApiController::class, 'storeFeature'])->whereNumber('world')->name('features.store');

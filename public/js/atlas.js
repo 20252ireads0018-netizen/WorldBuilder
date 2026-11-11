@@ -50,13 +50,13 @@ function paleta(estilo, theme) {
 function calcularCampo(C, lugares) {
     const N = C.SIZE >= 400 ? 300 : 240;
     const h = new Float32Array(N * N), w = new Float32Array(N * N), m = new Float32Array(N * N);
-    const neve = new Float32Array(N * N), lava = new Float32Array(N * N), wc = new Array(N * N), mc = new Array(N * N);
+    const neve = new Float32Array(N * N), lava = new Float32Array(N * N), wc = new Array(N * N), mc = new Array(N * N), mh = new Float32Array(N * N);
     C.comLugares(lugares, () => {
         for (let j = 0; j < N; j++) {
             const z = -C.HALF + (j / (N - 1)) * C.SIZE;
             for (let i = 0; i < N; i++) {
                 const x = -C.HALF + (i / (N - 1)) * C.SIZE, s = C.sample(x, z), k = j * N + i;
-                h[k] = s.h; w[k] = s.w; m[k] = s.m; neve[k] = s.snow; lava[k] = s.lava; wc[k] = s.wc; mc[k] = s.mc;
+                h[k] = s.h; w[k] = s.w; m[k] = s.m; neve[k] = s.snow; lava[k] = s.lava; wc[k] = s.wc; mc[k] = s.mc; mh[k] = s.hm || 0;
             }
         }
     });
@@ -78,7 +78,7 @@ function calcularCampo(C, lugares) {
         if (j < N - 1) { v = Math.min(v, d[k + N] + a); if (i < N - 1) v = Math.min(v, d[k + N + 1] + b); if (i > 0) v = Math.min(v, d[k + N - 1] + b); }
         d[k] = v;
     }
-    return { N, h, w, m, neve, lava, wc, mc, d };
+    return { N, h, w, m, neve, lava, wc, mc, d, mh };
 }
 
 // Marching squares: chama seg(x1,y1,x2,y2) em coordenadas de grade
@@ -349,6 +349,23 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         return campo.w[j * N + i] > 0.35;
     };
 
+    // Lugares sem nome: normais, discretos (menos símbolos) ou escondidos
+    const semNome = (f) => !f.name || f.shape?.semNome;
+    const fatorSem = (f) => (!semNome(f) ? 1 : opt.semNome === 'esconder' ? 0 : opt.semNome === 'discretos' ? 0.45 : 1);
+    lugares = lugares.filter((f) => fatorSem(f) > 0 || !['forest', 'mountain', 'city', 'village', 'tower', 'ruins', 'phenomenon', 'region', 'biome'].includes(f.type));
+    // Grade de ocupação: árvores e picos de lugares que se sobrepõem não se empilham
+    const passoGrade = 6, gradeArvores = new Set(), gradePicos = new Set();
+    const livreEm = (px, py, raio, ocupado) => {
+        const i0 = Math.floor((px - raio) / passoGrade), i1 = Math.floor((px + raio) / passoGrade), j0 = Math.floor((py - raio * 0.6) / passoGrade), j1 = Math.floor((py + raio * 0.6) / passoGrade);
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) if (ocupado.has(i * 100003 + j)) return false;
+        for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) ocupado.add(i * 100003 + j);
+        return true;
+    };
+    const ondeMontanha = (x, z) => {
+        const i = Math.round(((x + C.HALF) / C.SIZE) * (N - 1)), j = Math.round(((z + C.HALF) / C.SIZE) * (N - 1));
+        return i >= 0 && j >= 0 && i < N && j < N ? campo.mh[j * N + i] : 0;
+    };
+
     // Biomas: chão tingido com borda suave e símbolos do tipo de terreno
     for (const f of lugares.filter((l) => l.type === 'biome' && (l.points || []).length > 2)) {
         const skin = C.skinOf(f), cor = C.corOf(f), r = rng(f.id * 29 + 11);
@@ -437,12 +454,14 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         const F = C.forma(f), r = rng(f.id * 7 + 3), skin = C.skinOf(f), cor = P.cor ? C.corOf(f) : null;
         const s = 9;
         const area = Math.PI * Math.pow(f.size * u, 2) * F.sx * F.sz;
-        const n = Math.min(2400, Math.round(area / (s * s * 0.42) * (f.shape?.densidade ?? 1)));
+        const n = Math.min(2400, Math.round(area / (s * s * 0.42) * (f.shape?.densidade ?? 1) * fatorSem(f)));
         const lista = [];
         for (let i = 0; i < n; i++) {
             const [x, z] = C.pontoDentro(f, r, F);
-            if (Math.abs(x) > C.HALF - 1 || Math.abs(z) > C.HALF - 1 || naAgua(x, z)) continue;
-            lista.push([X(x), Y(z), s * (0.8 + r() * 0.45), r]);
+            if (Math.abs(x) > C.HALF - 1 || Math.abs(z) > C.HALF - 1 || naAgua(x, z) || ondeMontanha(x, z) > 2.2) continue;
+            const ss = s * (0.8 + r() * 0.45);
+            if (!livreEm(X(x), Y(z), ss * 0.42, gradeArvores)) continue; // outra floresta já pôs uma árvore aqui
+            lista.push([X(x), Y(z), ss, r]);
         }
         lista.sort((a, b) => a[1] - b[1]);
         const tons = skin === 'outono' ? [cor || P.copa, '#d9a03a', '#b8442a', '#e0c068'] : null;
@@ -459,11 +478,12 @@ function desenhar(ctx, L, C, opt, campo, lugares, escala) {
         const base = clamp(f.size * u * 0.6, 14, 90) * (skin === 'colinas' ? 1.1 : 1);
         if (skin === 'vulcao') { picos.push({ x: X(f.x), y: Y(f.z) + base * 0.35, w: base * 1.5, h: base * 1.15, skin, cor, r }); continue; }
         const area = Math.PI * Math.pow(f.size * u * 0.75, 2) * F.sx * F.sz;
-        const n = clamp(Math.round(area / (base * base * 0.35)), 2, 80);
+        const n = clamp(Math.round(area / (base * base * 0.35) * fatorSem(f)), 1, 80);
         for (let i = 0; i < n; i++) {
             const [x, z] = C.pontoDentro(f, r, F, 0, 0.75);
             const dn = Math.min(1, C.distN(f, x, z, F) / 0.75), k = (1 - dn * 0.55) * (0.7 + r() * 0.4);
             if (naAgua(x, z) && C.distN(f, x, z, F) > 0.3) continue;
+            if (!livreEm(X(x), Y(z), base * k * 0.3, gradePicos)) continue; // montanhas sobrepostas não empilham picos
             picos.push({ x: X(x), y: Y(z) + base * 0.3, w: base * k, h: base * k * (skin === 'colinas' ? 0.45 : skin === 'picos' ? 1.15 : 0.9), skin, cor, r });
         }
         const [cx0, cz0] = [f.x, f.z];
@@ -1121,6 +1141,9 @@ function montarDom() {
                 ${[['nomes', 'Nomes dos lugares'], ['titulo', 'Título em faixa'], ['moldura', 'Moldura decorada'], ['rosa', 'Rosa-dos-ventos'], ['escala', 'Escala em léguas'], ['legenda', 'Legenda'], ['grade', 'Grade de coordenadas'], ['relevo', 'Curvas de relevo'], ['mar', 'Navios e serpentes no mar'], ['nevoa', 'Névoa dos jogadores'], ['segredos', 'Lugares secretos']]
                     .map(([k, l]) => `<label class="wb-check" data-op="${k}"><input type="checkbox" data-o="${k}"> ${l}</label>`).join('')}
             </div>
+            <label>Lugares sem nome
+                <select data-o="semNome"><option value="normal">Desenhar normalmente</option><option value="discretos">Discretos (menos árvores e picos)</option><option value="esconder">Esconder (só aparece o que tem nome)</option></select>
+            </label>
             <h3>Arquivo</h3>
             <label>Largura da imagem
                 <select data-o="largura"><option value="1600">1600 px (tela)</option><option value="3200">3200 px (impressão A4)</option><option value="4800">4800 px (pôster)</option></select>
@@ -1339,9 +1362,10 @@ function fechar() {
 async function abrir(ctx) {
     C = ctx;
     if (!el) montarDom();
-    const padrao = { estilo: 'pergaminho', nomes: true, titulo: true, moldura: true, rosa: true, escala: true, legenda: true, grade: false, relevo: false, mar: true, segredos: false, largura: '3200', subtitulo: '' };
+    const padrao = { estilo: 'pergaminho', nomes: true, titulo: true, moldura: true, rosa: true, escala: true, legenda: true, grade: false, relevo: false, mar: true, segredos: false, largura: '3200', subtitulo: '', semNome: 'discretos' };
     const salvo = (() => { try { return JSON.parse(localStorage.getItem('wb-atlas') || '{}'); } catch { return {}; } })();
     opt = { ...padrao, ...salvo, tituloTexto: C.world.name, segredos: false };
+    if (C.era && !salvo.subtitulo) opt.subtitulo = C.era.name + (C.era.periodo ? ' · ' + C.era.periodo : ''); // mundo com eras: o subtítulo diz qual é
     el.classList.add('aberto');
     document.body.classList.add('atlas-on');
     sincronizarLado();

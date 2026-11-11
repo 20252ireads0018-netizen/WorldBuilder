@@ -726,3 +726,12 @@ body.atlas-on { overflow: hidden; }
 .wb #btn-trava { min-width: 38px; padding: 6px 10px; }
 .wb #btn-trava.trancado { background: linear-gradient(180deg, #f6e8c4, var(--paper-2)); color: var(--ink); border-color: var(--gold); font-weight: 600; }
 .wb.mapa-trancado #tools::after, .wb .mapa-trancado #tools::after { content: '🔒 Mapa trancado: só visualização'; display: block; color: #e3cf9f; font-size: 12px; text-align: center; padding: 10px 2px; line-height: 1.35; }
+
+.wb .era-sel { pointer-events: auto; margin-top: 6px; max-width: 280px; font-size: 14px; padding: 4px 8px; background: rgba(246, 232, 196, .95); border: 1px solid var(--gold); border-radius: 6px; color: var(--ink); }
+.wb .linha-tempo { list-style: none; margin: 8px 0 12px; padding: 0 0 0 14px; border-left: 2px solid var(--gold); }
+.wb .linha-tempo li { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 5px 0; }
+.wb .linha-tempo li::before { content: ''; position: absolute; left: -20px; top: 12px; width: 10px; height: 10px; border-radius: 50%; background: var(--paper-2); border: 2px solid var(--gold); }
+.wb .linha-tempo li.atual::before { background: var(--seal, #8a2d1c); border-color: var(--seal, #8a2d1c); }
+.wb .linha-tempo li.atual > .link { font-weight: 700; }
+.wb .linha-tempo .era-botoes { margin-left: auto; display: inline-flex; gap: 2px; }
+.wb .linha-tempo .icone { width: 26px; padding: 2px 0; font-size: 13px; }

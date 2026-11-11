@@ -182,4 +182,46 @@ class NevoaPapeisTest extends TestCase
         $this->actingAs($this->mestre)->putJson("/api/worlds/$id", ['trancado' => false])->assertOk()->assertJsonPath('world.trancado', false);
         $this->actingAs($this->dono)->putJson("/api/features/{$f->id}", ['name' => 'Outro'])->assertOk();
     }
+
+    public function test_eras_do_mundo(): void
+    {
+        $id = $this->mundo->id;
+        $dados = $this->getJson("/api/worlds/$id/data")->assertOk();
+        $eras = $dados->json('world.eras');
+        $this->assertCount(1, $eras);
+        $total = count($dados->json('features'));
+        $principal = $eras[0]['id'];
+
+        // nova era copiando a atual: mesmos lugares, ids novos
+        $nova = $this->postJson("/api/worlds/$id/eras", ['name' => 'Pós-Guerra', 'periodo' => 'Ano 540', 'copiar' => $principal])
+            ->assertCreated()->assertJsonPath('era.periodo', 'Ano 540')->json('era.id');
+        $daNova = $this->getJson("/api/worlds/$id/data?era=$nova")->assertJsonPath('era', $nova)->json('features');
+        $this->assertCount($total, $daNova);
+
+        // mudar a nova era não mexe na antiga
+        $this->putJson("/api/features/{$daNova[0]['id']}", ['name' => 'Ruínas da Capital'])->assertOk();
+        $this->postJson("/api/worlds/$id/features", ['type' => 'lake', 'x' => 0, 'z' => 0, 'size' => 5, 'era' => $nova])->assertCreated();
+        $this->assertCount($total, $this->getJson("/api/worlds/$id/data?era=$principal")->json('features'));
+        $this->assertCount($total + 1, $this->getJson("/api/worlds/$id/data?era=$nova")->json('features'));
+        $this->assertNotContains('Ruínas da Capital', array_column($this->getJson("/api/worlds/$id/data")->json('features'), 'name'));
+
+        // era vazia, reordenar, renomear e excluir
+        $vazia = $this->postJson("/api/worlds/$id/eras", ['name' => 'Era dos Dragões'])->assertCreated()->json('era.id');
+        $this->assertCount(0, $this->getJson("/api/worlds/$id/data?era=$vazia")->json('features'));
+        $this->putJson("/api/eras/$vazia", ['mover' => 'antes', 'name' => 'Era Antiga'])->assertOk()->assertJsonPath('world.eras.1.name', 'Era Antiga');
+        $this->deleteJson("/api/eras/$vazia")->assertOk();
+        $this->deleteJson("/api/eras/$nova")->assertOk();
+        $this->deleteJson("/api/eras/$principal")->assertStatus(422);
+
+        // jogador vê as eras mas não edita
+        $this->actingAs($this->jogador)->postJson("/api/worlds/$id/eras", ['name' => 'X'])->assertNotFound();
+
+        // exportar e importar levam as eras
+        $this->actingAs($this->dono)->postJson("/api/worlds/$id/eras", ['name' => 'Futuro', 'copiar' => $principal])->assertCreated();
+        $arquivo = \App\Support\MundoArquivo::exportar($this->mundo->fresh());
+        $this->assertCount(2, $arquivo['eras']);
+        $copia = \App\Support\MundoArquivo::importar($arquivo, $this->dono->id, 'Cópia');
+        $this->assertSame(['Era atual', 'Futuro'], $copia->eras()->pluck('name')->all());
+        $this->assertSame($total * 2, $copia->features()->count());
+    }
 }

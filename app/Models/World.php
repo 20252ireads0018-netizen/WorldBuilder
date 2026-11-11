@@ -34,6 +34,23 @@ class World extends Model
         static::deleting(fn (World $w) => Storage::disk('local')->delete($w->caminhoCapa()));
     }
 
+    public function eras(): HasMany
+    {
+        return $this->hasMany(Era::class)->orderBy('ordem')->orderBy('id');
+    }
+
+    /** Primeira era do mundo (criada na hora se o mundo ainda não tiver nenhuma). */
+    public function eraPrincipal(): Era
+    {
+        return $this->eras()->first() ?? $this->eras()->create(['name' => 'Era atual', 'ordem' => 0]);
+    }
+
+    /** Era pedida (id) se for deste mundo; senão a principal. */
+    public function eraOu(mixed $id): Era
+    {
+        return ($id ? $this->eras()->whereKey((int) $id)->first() : null) ?? $this->eraPrincipal();
+    }
+
     public function features(): HasMany
     {
         return $this->hasMany(Feature::class, 'world_id');

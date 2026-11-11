@@ -11,7 +11,17 @@ class Feature extends Model
 {
     protected $table = 'wb_features';
 
-    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points', 'skin', 'color', 'secret', 'shape'];
+    protected $fillable = ['type', 'name', 'description', 'x', 'z', 'size', 'points', 'skin', 'color', 'secret', 'shape', 'era_id'];
+
+    protected static function booted(): void
+    {
+        // lugar criado sem era vai para a primeira era do mundo
+        static::creating(function (Feature $f) {
+            if (! $f->era_id && $f->world_id) {
+                $f->era_id = World::find($f->world_id)?->eraPrincipal()->id;
+            }
+        });
+    }
 
     protected $casts = [
         'points' => 'array',
@@ -25,6 +35,11 @@ class Feature extends Model
     public function world(): BelongsTo
     {
         return $this->belongsTo(World::class, 'world_id');
+    }
+
+    public function era(): BelongsTo
+    {
+        return $this->belongsTo(Era::class);
     }
 
     public function npcs(): HasMany

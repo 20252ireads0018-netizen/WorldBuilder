@@ -401,6 +401,7 @@ function sample(x, z) {
         if (c > 0.01) { hm += c; mr += m.c[0] * c; mg += m.c[1] * c; mb += m.c[2] * c; }
     }
     o.h += hm;
+    o.hm = hm; // só a altura das montanhas (o mapa ilustrado usa para não pôr árvores em cima delas)
     if (hm > 0.01) { o.m = sm(0.4, 3, hm); o.mc = [mr / hm, mg / hm, mb / hm]; }
     else { o.snow = 0; }
 
@@ -2013,7 +2014,7 @@ function tirarLugar(id) {
     renderPanel();
 }
 async function recriarLugar(copia, idAtual) {
-    const n = await api('POST', `${API}/worlds/${WORLD}/features/restaurar`, { feature: copia });
+    const n = await api('POST', `${API}/worlds/${WORLD}/features/restaurar`, { feature: copia, era: eraAtual });
     if (idAtual != null) remap.set(idAtual, n.id);
     features.push(n);
     rebuildAll();
@@ -2036,7 +2037,7 @@ async function duplicarLugar(f) {
     const cl = (v) => Math.max(-HALF, Math.min(HALF, Math.round(v * 100) / 100));
     const extra = { skin: f.skin, color: f.color, shape: f.shape, secret: f.secret, size: f.size, description: f.description };
     if (PONTOS.has(f.type)) extra.points = f.points.map(([x, z]) => [cl(x + desl), cl(z + desl)]);
-    const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name ? f.name + ' (cópia)' : '', x: cl(f.x + desl), z: cl(f.z + desl), ...extra });
+    const novo = await api('POST', `${API}/worlds/${WORLD}/features`, { type: f.type, name: f.name ? f.name + ' (cópia)' : '', x: cl(f.x + desl), z: cl(f.z + desl), ...extra, era: eraAtual });
     features.push(novo);
     rebuildAll();
     select(novo.id);
@@ -2133,7 +2134,7 @@ canvas.addEventListener('wheel', fecharMenu, { passive: true });
 async function createFeature(type, x, z, extra = {}) {
     const t = TYPES[type];
     const size = type === 'ocean' ? Math.round(HALF * 0.45) : t.size[2];
-    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: '', x, z, size, ...extra });
+    const f = await api('POST', `${API}/worlds/${WORLD}/features`, { type, name: '', x, z, size, ...extra, era: eraAtual });
     features.push(f);
     rebuildAll();
     select(f.id);
@@ -2413,7 +2414,7 @@ function mundoHtml() {
             ${world.owner ? `<p class="mut">Mundo de ${esc(world.owner)}</p>` : ''}
             ${world.description ? `<p>${esc(world.description)}</p>` : ''}
             <p class="mut">${n} ${n === 1 ? 'lugar' : 'lugares'} no mapa. Clique num lugar ou escolha abaixo.</p>
-        </div>${listaLugares()}`;
+        </div>${erasHtml()}${listaLugares()}`;
     }
     return `<div class="head">
             <label>Nome do mundo <input data-world="name" value="${esc(world.name)}" maxlength="80"></label>
@@ -2429,6 +2430,7 @@ function mundoHtml() {
         </div>
         <p class="mut nota">Tudo o que você muda no mapa é salvo na hora. "Salvar agora" também atualiza a capa do mundo; o arquivo exportado pode ser importado de volta em Meus mundos.</p>
         ${world.papel === 'mestre' ? '<p class="aviso-claro">Você é mestre convidado neste mundo: pode editar o mapa e a névoa. Tamanho, visibilidade e jogadores ficam com o dono.</p>' : ''}
+        ${erasHtml()}
         <div class="help"><p>Escolha uma ferramenta à esquerda e clique no mapa. Com Selecionar, clique num lugar para editar e arraste o lugar selecionado para movê-lo. Botão direito abre o menu rápido. <strong>Ctrl+Z</strong> desfaz, <strong>Ctrl+Y</strong> refaz e <strong>Delete</strong> apaga o lugar selecionado.</p></div>
         ${listaLugares()}`;
 }
@@ -2733,6 +2735,11 @@ panel.addEventListener('change', async (e) => {
     if (t.hasAttribute('data-fog-modo')) { fogModo = t.value; renderPanel(); return; }
     if (t.hasAttribute('data-fog-raio')) { fogRaio = Number(t.value); return; }
     if (t.hasAttribute('data-fog-previa')) { previaJogador = t.checked; desenharNevoa(); rebuildAll(); return; }
+    if (t.dataset.eraCampo) {
+        try { world = { ...world, ...(await api('PUT', `${API}/eras/${eraAtual}`, { [t.dataset.eraCampo]: t.value })).world, fog: world.fog }; seletorEras(); } catch { renderPanel(); }
+        return;
+    }
+    if (t.dataset.eraNova) return;
     if (t.dataset.world) {
         try {
             world = (await api('PUT', `${API}/worlds/${WORLD}`, { [t.dataset.world]: t.value })).world;
@@ -2775,6 +2782,7 @@ panel.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const f = sel(), act = btn.dataset.act, id = btn.dataset.id;
+    if (act.startsWith('era-')) { try { await acaoEra(act, id); } catch { /* aviso já mostrado */ } return; }
     switch (act) {
         case 'ir': {
             const alvo = features.find((x) => x.id === Number(id));
@@ -2900,6 +2908,7 @@ function abrirAtlas() {
     window.WBAtlas.abrir({
         world, theme, features, EDIT: PODE, SIZE, HALF, TYPES, SKINS,
         nevoa: world.fog, soJogador: !PODE, nomeDe,
+        era: (world.eras || []).length > 1 ? eraDe(eraAtual) : null,
         sample, forma, borda, paraMundo, distN, pontoDentro, rioPath, riverDist, skinOf, corOf, dentroPoligono, centroDe,
         comLugares(lista, fn) { const antes = features; features = lista; prepare(); try { fn(); } finally { features = antes; prepare(); } },
         baixar3D: baixarVista3D,
@@ -2943,6 +2952,100 @@ function baixarVista3D() {
 $('#btn-imagem')?.addEventListener('click', abrirAtlas);
 $('#btn-salvar')?.addEventListener('click', salvarAgora);
 
+/* ---------- Eras: versões do mundo ao longo do tempo ---------- */
+let eraAtual = null;
+const chaveEra = 'wb-era-' + WORLD;
+const eraDe = (id) => (world?.eras || []).find((e) => e.id === id) || null;
+const eraSel = $('#era-sel');
+function eraNaUrl() {
+    const m = location.hash.match(/era=(\d+)/);
+    if (m) return Number(m[1]);
+    try { return Number(localStorage.getItem(chaveEra)) || null; } catch { return null; }
+}
+function guardarEra() {
+    try { localStorage.setItem(chaveEra, String(eraAtual)); } catch { /* sem armazenamento */ }
+    history.replaceState(null, '', location.pathname + location.search + '#era=' + eraAtual);
+}
+function seletorEras() {
+    if (!eraSel) return;
+    const eras = world.eras || [];
+    eraSel.hidden = eras.length < 2 && !EDIT;
+    eraSel.innerHTML = eras.map((e) => `<option value="${e.id}" ${e.id === eraAtual ? 'selected' : ''}>${esc(e.name)}${e.periodo ? ' · ' + esc(e.periodo) : ''}</option>`).join('')
+        + (EDIT ? '<option value="nova">+ Nova era…</option>' : '');
+}
+async function trocarEra(id, { avisar = true } = {}) {
+    if (!id || id === eraAtual) return;
+    const res = await fetch(`${API}/worlds/${WORLD}/data?era=${id}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) { toast('Não foi possível abrir essa era.'); seletorEras(); return; }
+    const data = await res.json();
+    world = { ...world, ...data.world, fog: world.fog };
+    features = data.features;
+    eraAtual = data.era;
+    // o histórico de Ctrl+Z é de cada era: ao trocar ele recomeça
+    historico.length = 0; refeitos.length = 0; remap.clear(); botoesHistorico();
+    selectedId = null;
+    if (tab === 'lugar') tab = 'mundo';
+    guardarEra();
+    seletorEras();
+    rebuildAll();
+    renderPanel();
+    if (avisar) { const e = eraDe(eraAtual); toast(`Agora você está em ${e?.name || 'outra era'}${e?.periodo ? ' (' + e.periodo + ')' : ''}.`); }
+}
+eraSel?.addEventListener('change', () => {
+    if (eraSel.value === 'nova') { seletorEras(); tab = 'mundo'; renderPanel(); $('[data-era-nova="name"]')?.focus(); return; }
+    trocarEra(Number(eraSel.value));
+});
+function erasHtml() {
+    const eras = world.eras || [], atual = eraDe(eraAtual);
+    const linha = eras.map((e, i) => `<li class="${e.id === eraAtual ? 'atual' : ''}">
+            <button type="button" class="link" data-act="era-ir" data-id="${e.id}">${esc(e.name)}</button>${e.periodo ? `<span class="mut">${esc(e.periodo)}</span>` : ''}
+            ${EDIT ? `<span class="era-botoes">
+                <button type="button" class="icone" data-act="era-antes" data-id="${e.id}" ${i === 0 ? 'disabled' : ''} title="Mais antiga">↑</button>
+                <button type="button" class="icone" data-act="era-depois" data-id="${e.id}" ${i === eras.length - 1 ? 'disabled' : ''} title="Mais recente">↓</button>
+                <button type="button" class="icone perigo" data-act="era-excluir" data-id="${e.id}" ${eras.length < 2 ? 'disabled' : ''} title="Excluir esta era">✕</button></span>` : ''}
+        </li>`).join('');
+    if (!EDIT) {
+        if (eras.length < 2) return '';
+        return `<details class="secao-lugar" open><summary>Eras do mundo</summary><ol class="linha-tempo">${linha}</ol>
+            ${atual?.description ? `<p>${esc(atual.description)}</p>` : ''}</details>`;
+    }
+    return `<details class="secao-lugar" open><summary>Eras do mundo</summary>
+        <p class="mut nota">Cada era é o mapa do mundo numa época. Mudar uma era não mexe nas outras.</p>
+        <ol class="linha-tempo">${linha}</ol>
+        <label>Nome desta era <input data-era-campo="name" value="${esc(atual?.name)}" maxlength="80"></label>
+        <label>Período <input data-era-campo="periodo" value="${esc(atual?.periodo)}" maxlength="80" placeholder="Ex.: Ano 312 a 540, Antes da Queda"></label>
+        <label>O que marca esta era <textarea data-era-campo="description" rows="2" maxlength="2000" placeholder="Guerras, reinos, catástrofes...">${esc(atual?.description)}</textarea></label>
+        <h3>Nova era</h3>
+        <label>Nome <input data-era-nova="name" maxlength="80" placeholder="Ex.: Pós-Guerra"></label>
+        <label>Período <input data-era-nova="periodo" maxlength="80" placeholder="Ex.: Ano 541 em diante"></label>
+        <label>Começar com <select data-era-nova="copiar"><option value="${eraAtual}">uma cópia de "${esc(atual?.name)}"</option><option value="">um mapa vazio</option></select></label>
+        <button type="button" class="primary" data-act="era-criar">Criar era</button>
+    </details>`;
+}
+async function acaoEra(act, id) {
+    switch (act) {
+        case 'era-ir': return trocarEra(Number(id));
+        case 'era-antes': case 'era-depois':
+            world = { ...world, ...(await api('PUT', `${API}/eras/${id}`, { mover: act === 'era-antes' ? 'antes' : 'depois' })).world, fog: world.fog };
+            seletorEras(); renderPanel(); return;
+        case 'era-excluir': {
+            const e = eraDe(Number(id));
+            if (!e || !confirm(`Excluir a era "${e.name}" com todos os lugares dela? Isso não pode ser desfeito.`)) return;
+            world = { ...world, ...(await api('DELETE', `${API}/eras/${id}`)).world, fog: world.fog };
+            if (Number(id) === eraAtual) { eraAtual = null; await trocarEra(world.eras[0].id, { avisar: false }); }
+            seletorEras(); renderPanel(); toast(`A era "${e.name}" foi excluída.`); return;
+        }
+        case 'era-criar': {
+            const v = (k) => $(`[data-era-nova="${k}"]`)?.value.trim() || '';
+            if (!v('name')) { toast('Dê um nome para a nova era.'); $('[data-era-nova="name"]')?.focus(); return; }
+            const r = await api('POST', `${API}/worlds/${WORLD}/eras`, { name: v('name'), periodo: v('periodo') || null, copiar: v('copiar') ? Number(v('copiar')) : null });
+            world = { ...world, ...r.world, fog: world.fog };
+            await trocarEra(r.era.id, { avisar: false });
+            toast(`Era "${r.era.name}" criada. Agora você está nela.`);
+        }
+    }
+}
+
 /* ---------- Trava do mapa: só visualização até destrancar ---------- */
 const btnTrava = $('#btn-trava');
 function aplicarTrava() {
@@ -2956,6 +3059,7 @@ function aplicarTrava() {
         btnTrava.title = world?.trancado ? 'Mapa trancado: só visualização. Clique para destrancar e voltar a editar.' : 'Trancar o mapa (fica só para visualização, sem mudar nada sem querer)';
     }
     root.classList.toggle('mapa-trancado', !!world?.trancado);
+    if (world) seletorEras();
     fecharMenu?.();
     cancelDraft();
     setTool('select');
@@ -3007,10 +3111,14 @@ pedirDesenho(3000);
 (async function init() {
     setTool('select');
     resize();
-    const res = await fetch(`${API}/worlds/${WORLD}/data`, { headers: { Accept: 'application/json' } });
+    const pedida = eraNaUrl();
+    let res = await fetch(`${API}/worlds/${WORLD}/data${pedida ? '?era=' + pedida : ''}`, { headers: { Accept: 'application/json' } });
+    if (!res.ok && pedida) res = await fetch(`${API}/worlds/${WORLD}/data`, { headers: { Accept: 'application/json' } });
     if (!res.ok) { toast('Não foi possível abrir este mundo.'); return; }
     const data = await res.json();
     world = data.world;
+    eraAtual = data.era;
+    seletorEras();
     theme = world.theme;
     features = data.features;
     setDimensao(world.dimension);

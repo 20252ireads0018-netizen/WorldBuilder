@@ -90,6 +90,7 @@
         <div id="labels"></div>
         <div id="topo">
             <h1 id="title">{{ $world->name }}</h1>
+            <select id="era-sel" class="era-sel" aria-label="Era do mundo" hidden></select>
             @if($editar)<span id="status" class="status" aria-live="polite"></span>@endif
         </div>
         <div id="acoes">

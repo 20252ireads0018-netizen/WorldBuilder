@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Era;
 use App\Models\Feature;
 use App\Models\Item;
 use App\Models\Npc;
@@ -13,6 +14,7 @@ use App\Support\MundoArquivo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class WorldbuilderApiController extends Controller
 {
-    public const MAX_LOCAIS = 400;
+    public const MAX_LOCAIS = 400; // por era
+    public const MAX_ERAS = 30;
     public const MAX_FILHOS = 200; // NPCs, lojas ou itens por local
     public const MAX_JOGADORES = 50;
     public const MAX_CAPA = 400_000; // bytes do JPEG da capa
@@ -75,7 +78,8 @@ class WorldbuilderApiController extends Controller
         $papel = $world->papel($user);
         $editor = in_array($papel, ['dono', 'mestre'], true);
 
-        $q = $world->features()->with(self::RELACOES);
+        $era = $world->eraOu(request('era'));
+        $q = $era->features()->with(self::RELACOES);
         if (! $editor) {
             $q->where('secret', false);
         }
@@ -112,6 +116,7 @@ class WorldbuilderApiController extends Controller
             'features' => $features,
             'can_edit' => $editor,
             'papel' => $papel ?? 'visitante',
+            'era' => $era->id,
         ]);
     }
 
@@ -124,6 +129,7 @@ class WorldbuilderApiController extends Controller
         $out['theme'] = $world->tema();
         $out['fog'] = $world->nevoa();
         $out['trancado'] = (bool) $world->trancado;
+        $out['eras'] = $world->eras()->get()->map->paraJson()->values();
         $out['papel'] = $dono ? 'dono' : ($editor ? 'mestre' : (is_string($papel) ? $papel : 'visitante'));
         $out['owner'] = $world->owner?->name;
         $out['cover'] = $world->urlCapa();
@@ -301,7 +307,11 @@ class WorldbuilderApiController extends Controller
             'skin' => ['nullable', Rule::in(Aparencia::SKINS[$request->input('type')] ?? [])],
             'color' => ['nullable', 'regex:' . Aparencia::COR],
             'secret' => 'nullable|boolean',
+            'era' => 'nullable|integer',
         ] + Aparencia::regrasLugar((int) $world->dimension));
+        $era = $world->eraOu($data['era'] ?? null);
+        unset($data['era']);
+        $data['era_id'] = $era->id;
         $data['shape'] = Aparencia::formato($data['shape'] ?? null);
         $data['name'] = trim((string) ($data['name'] ?? '')); // lugar sem nome é permitido
 
@@ -312,8 +322,8 @@ class WorldbuilderApiController extends Controller
         if (! $linha) {
             $data['points'] = null;
         }
-        if ($world->features()->count() >= self::MAX_LOCAIS) {
-            abort(422, 'Este mapa chegou ao limite de ' . self::MAX_LOCAIS . ' lugares.');
+        if ($era->features()->count() >= self::MAX_LOCAIS) {
+            abort(422, 'Esta era do mapa chegou ao limite de ' . self::MAX_LOCAIS . ' lugares.');
         }
 
         $feature = $world->features()->create($data);
@@ -381,14 +391,88 @@ class WorldbuilderApiController extends Controller
     {
         $this->exigirEditor($world);
         $d = $request->validate(MundoArquivo::regrasLugarArquivo('feature.', (int) $world->dimension));
-        if ($world->features()->count() >= self::MAX_LOCAIS) {
-            abort(422, 'Este mapa chegou ao limite de ' . self::MAX_LOCAIS . ' lugares.');
+        $era = $world->eraOu($request->input('era'));
+        if ($era->features()->count() >= self::MAX_LOCAIS) {
+            abort(422, 'Esta era do mapa chegou ao limite de ' . self::MAX_LOCAIS . ' lugares.');
         }
-        $f = MundoArquivo::criarLugar($world, $d['feature']);
+        $f = MundoArquivo::criarLugar($world, $d['feature'], $era->id);
         abort_unless($f, 422, 'Lugar inválido.');
         $world->touch();
 
         return response()->json($this->full($f), 201);
+    }
+
+    // ---- Eras (versões do mundo no tempo) -----------------------------
+
+    /** Nova era: vazia ou copiando todos os lugares (com NPCs, lojas e itens) de outra era. */
+    public function storeEra(Request $request, World $world): JsonResponse
+    {
+        $this->exigirEditor($world);
+        $d = $request->validate([
+            'name' => 'required|string|max:80',
+            'periodo' => 'nullable|string|max:80',
+            'description' => 'nullable|string|max:2000',
+            'copiar' => 'nullable|integer',
+        ]);
+        abort_if($world->eras()->count() >= self::MAX_ERAS, 422, 'Este mundo chegou ao limite de ' . self::MAX_ERAS . ' eras.');
+        $origem = isset($d['copiar']) ? $world->eras()->whereKey($d['copiar'])->first() : null;
+        $era = DB::transaction(function () use ($world, $d, $origem) {
+            $era = $world->eras()->create([
+                'name' => $d['name'], 'periodo' => $d['periodo'] ?? null, 'description' => $d['description'] ?? null,
+                'ordem' => ((int) $world->eras()->max('ordem')) + 1,
+            ]);
+            if ($origem) {
+                foreach ($origem->features()->with(['npcs', 'shops', 'items'])->orderBy('id')->get() as $f) {
+                    MundoArquivo::criarLugar($world, MundoArquivo::lugarParaArquivo($f), $era->id);
+                }
+            }
+
+            return $era;
+        });
+        $world->touch();
+
+        return response()->json(['era' => $era->paraJson(), 'world' => $this->mundoJson($world, $world->papel($request->user()))], 201);
+    }
+
+    public function updateEra(Request $request, Era $era): JsonResponse
+    {
+        $world = $era->world;
+        $this->exigirEditor($world);
+        $d = $request->validate([
+            'name' => 'sometimes|required|string|max:80',
+            'periodo' => 'sometimes|nullable|string|max:80',
+            'description' => 'sometimes|nullable|string|max:2000',
+            'mover' => 'sometimes|in:antes,depois',
+        ]);
+        $era->fill(array_intersect_key($d, array_flip(['name', 'periodo', 'description'])));
+        $era->save();
+        if (isset($d['mover'])) {
+            // troca de lugar com a vizinha na linha do tempo e renumera tudo
+            $lista = $world->eras()->get()->values();
+            $i = $lista->search(fn (Era $e) => $e->id === $era->id);
+            $j = $d['mover'] === 'antes' ? $i - 1 : $i + 1;
+            if ($j >= 0 && $j < $lista->count()) {
+                $ordem = $lista->all();
+                [$ordem[$i], $ordem[$j]] = [$ordem[$j], $ordem[$i]];
+                foreach ($ordem as $k => $e) {
+                    $e->update(['ordem' => $k]);
+                }
+            }
+        }
+        $world->touch();
+
+        return response()->json(['world' => $this->mundoJson($world, $world->papel($request->user()))]);
+    }
+
+    public function destroyEra(Request $request, Era $era): JsonResponse
+    {
+        $world = $era->world;
+        $this->exigirEditor($world);
+        abort_if($world->eras()->count() <= 1, 422, 'O mundo precisa ter pelo menos uma era.');
+        DB::transaction(fn () => $era->delete());
+        $world->touch();
+
+        return response()->json(['world' => $this->mundoJson($world, $world->papel($request->user()))]);
     }
 
     // ---- NPCs ---------------------------------------------------------
